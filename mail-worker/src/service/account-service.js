@@ -215,6 +215,10 @@ const accountService = {
 		return num;
 	},
 
+	selectAllEmails(c) {
+		return orm(c).select({ email: account.email }).from(account).where(eq(account.isDel, isDel.NORMAL)).all();
+	},
+
 	async restoreByEmail(c, email) {
 		await orm(c).update(account).set({isDel: isDel.NORMAL}).where(eq(account.email, email)).run();
 	},

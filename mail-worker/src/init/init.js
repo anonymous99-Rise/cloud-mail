@@ -33,6 +33,7 @@ const dbInit = {
 		await this.v3_2DB(c);
 		await this.v3_3DB(c);
 		await this.v3_4DB(c);
+		await this.v3_5DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
 	},
@@ -70,6 +71,18 @@ const dbInit = {
 				c.env.db.prepare(`ALTER TABLE setting ADD COLUMN dingtalk_client_id TEXT NOT NULL DEFAULT '';`),
 				c.env.db.prepare(`ALTER TABLE setting ADD COLUMN dingtalk_client_secret TEXT NOT NULL DEFAULT '';`),
 				c.env.db.prepare(`ALTER TABLE setting ADD COLUMN dingtalk_switch INTEGER NOT NULL DEFAULT 1;`)
+			]);
+		} catch (e) {
+			console.warn(`跳过字段：${e.message}`);
+		}
+	},
+
+	async v3_5DB(c) {
+		try {
+			await c.env.db.batch([
+				c.env.db.prepare(`ALTER TABLE setting ADD COLUMN gitea_admin_token TEXT NOT NULL DEFAULT '';`),
+				c.env.db.prepare(`ALTER TABLE setting ADD COLUMN sub2api_url TEXT NOT NULL DEFAULT '';`),
+				c.env.db.prepare(`ALTER TABLE setting ADD COLUMN sub2api_account TEXT NOT NULL DEFAULT '';`)
 			]);
 		} catch (e) {
 			console.warn(`跳过字段：${e.message}`);
@@ -562,6 +575,21 @@ const dbInit = {
 
 		await c.env.db.prepare(`UPDATE perm SET perm_key = 'setting:clean' WHERE perm_key = 'seting:clear'`).run();
 		await c.env.db.prepare(`DELETE FROM perm WHERE perm_key = 'user:star'`).run();
+		//增量补充新权限（已初始化的库不会重跑全量种子）
+		try {
+			await c.env.db.prepare(`
+        INSERT INTO perm (perm_id, name, perm_key, pid, type, sort)
+        SELECT 31, '统一邮箱', 'gitea:match', 17, 2, 2
+        WHERE NOT EXISTS (SELECT 1 FROM perm WHERE perm_key = 'gitea:match')
+      `).run();
+			await c.env.db.prepare(`
+        INSERT INTO perm (perm_id, name, perm_key, pid, type, sort)
+        SELECT 32, '邮箱指派', 'gitea:set', 17, 2, 3
+        WHERE NOT EXISTS (SELECT 1 FROM perm WHERE perm_key = 'gitea:set')
+      `).run();
+		} catch (e) {
+			console.warn(`跳过权限：${e.message}`);
+		}
 		// 创建 role 表并插入默认身份
 		await c.env.db.prepare(`
       CREATE TABLE IF NOT EXISTS role (

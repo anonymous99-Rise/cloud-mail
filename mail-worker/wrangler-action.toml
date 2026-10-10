@@ -43,6 +43,10 @@ domain = "${DOMAIN}"
 admin = "${ADMIN}"
 jwt_secret = "${JWT_SECRET}"
 project_link = "${PROJECT_LINK}"
+gitea_domain = "${GITEA_DOMAIN}"
+gitea_admin_token = "${GITEA_ADMIN_TOKEN}"
+sub2api_url = "${SUB2API_URL}"
+sub2api_account = "${SUB2API_ACCOUNT}"
 
 [build]
 command = "pnpm --prefix ../mail-vue install && pnpm --prefix ../mail-vue run build"

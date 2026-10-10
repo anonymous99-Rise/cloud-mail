@@ -118,5 +118,15 @@ const routers = {
             name: 'analysis',
             menu: true
         }
+    }],
+    'gitea:match': [{
+        path: '/email-unify',
+        name: 'email-unify',
+        component: () => import('@/views/email-unify/index.vue'),
+        meta: {
+            title: 'emailUnify',
+            name: 'email-unify',
+            menu: true
+        }
     }]
 }

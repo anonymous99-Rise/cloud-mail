@@ -441,6 +441,31 @@
             </div>
           </div>
 
+          <!-- Email Unify Card -->
+          <div class="settings-card">
+            <div class="card-title">{{ $t('emailUnify') }}</div>
+            <div class="card-content">
+              <div class="setting-item">
+                <div><span>Gitea</span></div>
+                <div class="forward">
+                  <span>{{ setting.giteaDomain || setting.giteaAdminToken ? $t('configured') : $t('notConfigured') }}</span>
+                  <el-button class="opt-button" size="small" type="primary" @click="openGiteaAdminSetting">
+                    <Icon icon="fluent:settings-48-regular" width="18" height="18"/>
+                  </el-button>
+                </div>
+              </div>
+              <div class="setting-item">
+                <div><span>Sub2api</span></div>
+                <div class="forward">
+                  <span>{{ setting.sub2apiUrl ? $t('configured') : $t('notConfigured') }}</span>
+                  <el-button class="opt-button" size="small" type="primary" @click="openSub2apiSetting">
+                    <Icon icon="fluent:settings-48-regular" width="18" height="18"/>
+                  </el-button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="settings-card about">
             <div class="card-title">{{ $t('about') }}</div>
             <div class="card-content">
@@ -543,6 +568,29 @@
             <el-switch v-model="oauthForm.switch" :active-value="0" :inactive-value="1" :active-text="$t('enable')"
                        :inactive-text="$t('disable')"/>
             <el-button type="primary" :loading="settingLoading" @click="saveOauth">{{ $t('save') }}</el-button>
+          </div>
+        </template>
+      </el-dialog>
+      <el-dialog v-model="giteaAdminShow" :title="$t('giteaAdmin') + ' - Gitea'" width="340">
+        <div class="dialog-content">
+          <el-input type="text" placeholder="https://git.example.com" v-model="giteaAdminForm.domain"/>
+          <el-input type="text" style="margin-top: 15px" :placeholder="$t('giteaAdminToken')" v-model="giteaAdminForm.token"/>
+        </div>
+        <template #footer>
+          <div class="dialog-footer">
+            <el-button type="primary" :loading="settingLoading" @click="saveGiteaAdmin">{{ $t('save') }}</el-button>
+          </div>
+        </template>
+      </el-dialog>
+      <el-dialog v-model="sub2apiShow" :title="'Sub2api - ' + $t('setting')" width="340">
+        <div class="dialog-content">
+          <el-input type="text" placeholder="https://sub2api.example.com" v-model="sub2apiForm.url"/>
+          <el-input type="text" style="margin-top: 15px" :placeholder="$t('sub2apiEmail')" v-model="sub2apiForm.email"/>
+          <el-input type="password" style="margin-top: 15px" :placeholder="$t('password')" v-model="sub2apiForm.password"/>
+        </div>
+        <template #footer>
+          <div class="dialog-footer">
+            <el-button type="primary" :loading="settingLoading" @click="saveSub2api">{{ $t('save') }}</el-button>
           </div>
         </template>
       </el-dialog>
@@ -1023,6 +1071,19 @@ const oauthForm = reactive({
   clientSecret: '',
   switch: 1,
   domain: ''
+})
+
+const giteaAdminShow = ref(false)
+const giteaAdminForm = reactive({
+  domain: '',
+  token: ''
+})
+
+const sub2apiShow = ref(false)
+const sub2apiForm = reactive({
+  url: '',
+  email: '',
+  password: ''
 })
 
 const s3 = reactive({
@@ -1583,6 +1644,43 @@ function saveOauth() {
   form[oauthForm.key + 'Switch'] = oauthForm.switch
   if (oauthForm.key === 'gitea') {
     form['giteaDomain'] = oauthForm.domain
+  }
+  editSetting(form)
+}
+
+function openGiteaAdminSetting() {
+  giteaAdminForm.domain = setting.value.giteaDomain || ''
+  giteaAdminForm.token = ''
+  giteaAdminShow.value = true
+}
+
+function saveGiteaAdmin() {
+  const form = {
+    giteaDomain: giteaAdminForm.domain.trim()
+  }
+  //令牌留空表示不修改（get() 返回的是脱敏值）
+  if (giteaAdminForm.token.trim()) {
+    form.giteaAdminToken = giteaAdminForm.token.trim()
+  }
+  editSetting(form)
+}
+
+function openSub2apiSetting() {
+  sub2apiForm.url = setting.value.sub2apiUrl || ''
+  sub2apiForm.email = setting.value.sub2apiAccount || ''
+  sub2apiForm.password = ''
+  sub2apiShow.value = true
+}
+
+function saveSub2api() {
+  const form = {
+    sub2apiUrl: sub2apiForm.url.trim()
+  }
+  if (sub2apiForm.email.trim() && sub2apiForm.password) {
+    form.sub2apiAccount = JSON.stringify({
+      email: sub2apiForm.email.trim(),
+      password: sub2apiForm.password
+    })
   }
   editSetting(form)
 }

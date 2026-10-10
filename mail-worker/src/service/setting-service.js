@@ -87,6 +87,15 @@ const settingService = {
 		settingRow.s3AccessKey = settingRow.s3AccessKey ? `${settingRow.s3AccessKey.slice(0, 12)}******` : null;
 		settingRow.s3SecretKey = settingRow.s3SecretKey ? `${settingRow.s3SecretKey.slice(0, 12)}******` : null;
 		settingRow.tgBotToken = settingRow.tgBotToken ? `${settingRow.tgBotToken.slice(0, 20)}******` : null;
+		settingRow.giteaAdminToken = settingRow.giteaAdminToken ? `${settingRow.giteaAdminToken.slice(0, 8)}******` : null;
+		if (settingRow.sub2apiAccount) {
+			try {
+				const account = JSON.parse(settingRow.sub2apiAccount);
+				settingRow.sub2apiAccount = account.email || '';
+			} catch (e) {
+				settingRow.sub2apiAccount = '';
+			}
+		}
 		settingRow.hasR2 = !!c.env.r2
 		settingRow.hasCfEmail = !!c.env.email
 

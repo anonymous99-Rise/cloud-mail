@@ -26,6 +26,10 @@ jobs:
       R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME || vars.R2_BUCKET_NAME }}
       PROJECT_LINK: ${{ secrets.PROJECT_LINK || vars.PROJECT_LINK }}
       AI_MODEL: ${{ secrets.AI_MODEL || vars.AI_MODEL || '@cf/meta/llama-3.1-8b-instruct-fast' }}
+      GITEA_DOMAIN: ${{ secrets.GITEA_DOMAIN || vars.GITEA_DOMAIN || '' }}
+      GITEA_ADMIN_TOKEN: ${{ secrets.GITEA_ADMIN_TOKEN || vars.GITEA_ADMIN_TOKEN || '' }}
+      SUB2API_URL: ${{ secrets.SUB2API_URL || vars.SUB2API_URL || '' }}
+      SUB2API_ACCOUNT: ${{ secrets.SUB2API_ACCOUNT || vars.SUB2API_ACCOUNT || '' }}
       CLOUDFLARE_EMAIL: ${{ secrets.CF_EMAIL || vars.CF_EMAIL || false }}
       ANALYSIS_CACHE: ${{ secrets.ANALYSIS_CACHE || vars.ANALYSIS_CACHE || false }}
 
@@ -124,6 +128,10 @@ jobs:
           sed -i "s|\${PROJECT_LINK}|${PROJECT_LINK}|g" "$CONFIG_FILE"
           sed -i "s|\${ANALYSIS_CACHE}|${ANALYSIS_CACHE}|g" "$CONFIG_FILE"
           sed -i "s|\${AI_MODEL}|${AI_MODEL}|g" "$CONFIG_FILE"
+          sed -i "s|\${GITEA_DOMAIN}|${GITEA_DOMAIN}|g" "$CONFIG_FILE"
+          sed -i "s|\${GITEA_ADMIN_TOKEN}|${GITEA_ADMIN_TOKEN}|g" "$CONFIG_FILE"
+          sed -i "s|\${SUB2API_URL}|${SUB2API_URL}|g" "$CONFIG_FILE"
+          sed -i "s|\${SUB2API_ACCOUNT}|${SUB2API_ACCOUNT}|g" "$CONFIG_FILE"
           sed -i "s|\${LINUXDO_CLIENT_ID}|${LINUXDO_CLIENT_ID}|g" "$CONFIG_FILE"
           sed -i "s|\${LINUXDO_CLIENT_SECRET}|${LINUXDO_CLIENT_SECRET}|g" "$CONFIG_FILE"
           sed -i "s|\${LINUXDO_CALLBACK_URL}|${LINUXDO_CALLBACK_URL}|g" "$CONFIG_FILE"
