@@ -179,6 +179,98 @@ const oauthService = {
 		return await this.saveAndLogin(c, userInfo);
 	},
 
+	async giteaLogin(c, params) {
+
+		const { code, redirectUri } = params;
+
+		const setting = await settingService.query(c);
+		this.assertEnabled(setting, 'giteaSwitch');
+
+		const giteaDomain = (setting.giteaDomain || '').replace(/\/$/, '');
+
+		const reqParams = new URLSearchParams()
+		reqParams.append('client_id', setting.giteaClientId)
+		reqParams.append('client_secret', setting.giteaClientSecret)
+		reqParams.append('code', code)
+		reqParams.append('redirect_uri', redirectUri)
+		reqParams.append('grant_type', 'authorization_code')
+
+		const tokenRes = await fetch(giteaDomain + '/login/oauth/access_token', {
+			method: "POST",
+			headers: { "Content-Type": "application/x-www-form-urlencoded" },
+			body: reqParams.toString()
+		})
+
+		if (!tokenRes.ok) {
+			throw new BizError(tokenRes.statusText)
+		}
+
+		const token = await tokenRes.json()
+
+		const userRes = await fetch(giteaDomain + '/api/v1/user', {
+			headers: {
+				Authorization: 'Bearer ' + token.access_token
+			}
+		});
+
+		if (!userRes.ok) {
+			throw new BizError(userRes.statusText)
+		}
+
+		const userInfo = await userRes.json();
+
+		userInfo.oauthUserId = String(userInfo.id);
+		userInfo.username = userInfo.login;
+		userInfo.avatar = userInfo.avatar_url;
+		userInfo.platform = 'gitea';
+
+		return await this.saveAndLogin(c, userInfo)
+	},
+
+	async dingtalkLogin(c, params) {
+
+		const { code, redirectUri } = params;
+
+		const setting = await settingService.query(c);
+		this.assertEnabled(setting, 'dingtalkSwitch');
+
+		const tokenRes = await fetch("https://api.dingtalk.com/v1.0/oauth2/userAccessToken", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				grantType: "authorization_code",
+				code: code,
+				appid: setting.dingtalkClientId,
+				appsecret: setting.dingtalkClientSecret
+			})
+		})
+
+		if (!tokenRes.ok) {
+			throw new BizError(tokenRes.statusText)
+		}
+
+		const token = await tokenRes.json()
+
+		const userRes = await fetch('https://api.dingtalk.com/v1.0/oauth2/userInfo', {
+			headers: {
+				'x-dingtalk-access-token': token.accessToken
+			}
+		});
+
+		if (!userRes.ok) {
+			throw new BizError(userRes.statusText)
+		}
+
+		const userInfo = await userRes.json();
+
+		userInfo.oauthUserId = String(userInfo.unionId || userInfo.openId);
+		userInfo.username = userInfo.nick;
+		userInfo.avatar = userInfo.pic;
+		userInfo.platform = 'dingtalk';
+
+		return await this.saveAndLogin(c, userInfo);
+	},
+
 	async saveAndLogin(c, userInfo) {
 
 		const oauthRow = await this.saveUser(c, userInfo);

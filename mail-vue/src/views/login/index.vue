@@ -167,7 +167,7 @@ import {cvtR2Url} from "@/utils/convert.js";
 import {loginUserInfo} from "@/request/my.js";
 import {permsToRouter} from "@/perm/perm.js";
 import {useI18n} from "vue-i18n";
-import {oauthBindUser, oauthLinuxDoLogin, oauthGithubLogin, oauthGoogleLogin} from "@/request/ouath.js";
+import {oauthBindUser, oauthLinuxDoLogin, oauthGithubLogin, oauthGoogleLogin, oauthGiteaLogin, oauthDingtalkLogin} from "@/request/ouath.js";
 
 const {t} = useI18n();
 const accountStore = useAccountStore();
@@ -181,7 +181,7 @@ const oauthLoading = ref(false);
 const showBindForm = ref(false);
 const show = ref('login')
 
-const oauthKeys = ['linuxdo', 'github', 'google']
+const oauthKeys = ['linuxdo', 'github', 'google', 'gitea', 'dingtalk']
 
 const oauthProvider = computed(() => {
   const fromState = route.query.state
@@ -195,6 +195,8 @@ const oauthProviders = computed(() => {
     { key: 'google', label: 'Google', icon: 'devicon:google', iconType: 'iconify' },
     { key: 'github', label: 'GitHub', icon: 'codicon:github-inverted', iconType: 'iconify' },
     { key: 'linuxdo', label: 'LinuxDo', icon: '/image/linuxdo.webp', iconType: 'image' },
+    { key: 'gitea', label: 'Gitea', icon: 'devicon:gitea', iconType: 'iconify' },
+    { key: 'dingtalk', label: '钉钉', icon: 'fluent:chat-12-filled', iconType: 'iconify' },
   ]
   return allProviders.filter(p => settingStore.settings[p.key + 'Switch'] === 0)
 })
@@ -288,11 +290,14 @@ const getEmailName = (email) => {
 function oauthLogin(provider) {
   const clientId = settingStore.settings[provider + 'ClientId']
   const redirectUri = encodeURIComponent(window.location.origin + '/login')
+  const giteaDomain = (settingStore.settings.giteaDomain || '').replace(/\/$/, '')
   sessionStorage.setItem('oauthProvider', provider)
   const authorizeUrls = {
     linuxdo: `https://connect.linux.do/oauth2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=openid+profile+email&state=${provider}`,
     github: `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=user:email&state=${provider}`,
     google: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=openid+profile+email&state=${provider}`,
+    gitea: `${giteaDomain}/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&state=${provider}`,
+    dingtalk: `https://login.dingtalk.com/oauth2/auth?appid=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=openid&state=${provider}`,
   }
   window.location.href = authorizeUrls[provider]
 }
@@ -301,6 +306,8 @@ const loginFns = {
   linuxdo: oauthLinuxDoLogin,
   github: oauthGithubLogin,
   google: oauthGoogleLogin,
+  gitea: oauthGiteaLogin,
+  dingtalk: oauthDingtalkLogin,
 }
 
 oauthGetUser();

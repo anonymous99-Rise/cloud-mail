@@ -17,6 +17,16 @@ app.post('/oauth/google/login', async (c) => {
 	return c.json(result.ok(loginInfo))
 });
 
+app.post('/oauth/gitea/login', async (c) => {
+	const loginInfo = await oauthService.giteaLogin(c, await c.req.json());
+	return c.json(result.ok(loginInfo))
+});
+
+app.post('/oauth/dingtalk/login', async (c) => {
+	const loginInfo = await oauthService.dingtalkLogin(c, await c.req.json());
+	return c.json(result.ok(loginInfo))
+});
+
 app.put('/oauth/bindUser', async (c) => {
 	const loginInfo = await oauthService.bindUser(c, await c.req.json());
 	return c.json(result.ok(loginInfo))

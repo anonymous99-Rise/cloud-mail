@@ -532,10 +532,11 @@
         </form>
       </el-dialog>
       <el-dialog v-model="oauthSettingShow" :title="$t('oauthSetting') + ' - ' + oauthForm.label" width="340"
-                 @closed="oauthForm.clientId = ''; oauthForm.clientSecret = ''; oauthForm.switch = 1">
+                 @closed="oauthForm.clientId = ''; oauthForm.clientSecret = ''; oauthForm.switch = 1; oauthForm.domain = ''">
         <div class="dialog-content">
           <el-input type="text" :placeholder="$t('clientId')" v-model="oauthForm.clientId"/>
           <el-input type="text" style="margin-top: 15px" :placeholder="$t('clientSecret')" v-model="oauthForm.clientSecret"/>
+          <el-input v-if="oauthForm.key === 'gitea'" type="text" style="margin-top: 15px" placeholder="Gitea 域名（如 https://gitea.example.com）" v-model="oauthForm.domain"/>
         </div>
         <template #footer>
           <div class="dialog-footer">
@@ -1011,6 +1012,8 @@ const oauthPlatforms = [
   { key: 'google', label: 'Google', icon: 'devicon:google', iconType: 'iconify' },
   { key: 'github', label: 'GitHub', icon: 'codicon:github-inverted', iconType: 'iconify' },
   { key: 'linuxdo', label: 'LinuxDo', icon: '/image/linuxdo.webp', iconType: 'image' },
+  { key: 'gitea', label: 'Gitea', icon: 'devicon:gitea', iconType: 'iconify' },
+  { key: 'dingtalk', label: '钉钉', icon: 'fluent:chat-12-filled', iconType: 'iconify' },
 ]
 const oauthSettingShow = ref(false)
 const oauthForm = reactive({
@@ -1019,6 +1022,7 @@ const oauthForm = reactive({
   clientId: '',
   clientSecret: '',
   switch: 1,
+  domain: ''
 })
 
 const s3 = reactive({
@@ -1568,6 +1572,7 @@ function openOauthSetting(p) {
   oauthForm.clientId = setting.value[p.key + 'ClientId'] || ''
   oauthForm.clientSecret = setting.value[p.key + 'ClientSecret'] || ''
   oauthForm.switch = setting.value[p.key + 'Switch'] ?? 1
+  oauthForm.domain = setting.value[p.key + 'Domain'] || ''
   oauthSettingShow.value = true
 }
 
@@ -1576,6 +1581,9 @@ function saveOauth() {
   form[oauthForm.key + 'ClientId'] = oauthForm.clientId
   form[oauthForm.key + 'ClientSecret'] = oauthForm.clientSecret
   form[oauthForm.key + 'Switch'] = oauthForm.switch
+  if (oauthForm.key === 'gitea') {
+    form['giteaDomain'] = oauthForm.domain
+  }
   editSetting(form)
 }
 

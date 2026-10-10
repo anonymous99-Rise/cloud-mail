@@ -225,6 +225,11 @@ const settingService = {
 			githubSwitch: settingRow.githubSwitch,
 			googleClientId: settingRow.googleClientId,
 			googleSwitch: settingRow.googleSwitch,
+			giteaClientId: settingRow.giteaClientId,
+			giteaSwitch: settingRow.giteaSwitch,
+			giteaDomain: settingRow.giteaDomain,
+			dingtalkClientId: settingRow.dingtalkClientId,
+			dingtalkSwitch: settingRow.dingtalkSwitch,
 			minEmailPrefix: settingRow.minEmailPrefix,
 			projectLink: settingRow.projectLink
 		};

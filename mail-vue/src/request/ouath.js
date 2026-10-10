@@ -12,6 +12,14 @@ export function oauthGoogleLogin(code, redirectUri) {
     return http.post('/oauth/google/login',{code, redirectUri})
 }
 
+export function oauthGiteaLogin(code, redirectUri) {
+    return http.post('/oauth/gitea/login',{code, redirectUri})
+}
+
+export function oauthDingtalkLogin(code, redirectUri) {
+    return http.post('/oauth/dingtalk/login',{code, redirectUri})
+}
+
 export function oauthBindUser(form) {
     return http.put('/oauth/bindUser', form)
 }

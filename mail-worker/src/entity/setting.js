@@ -67,6 +67,13 @@ export const setting = sqliteTable('setting', {
 	webhookUrl: text('webhook_url').default('').notNull(),
 	webhookStatus: integer('webhook_status').default(1).notNull(),
 	webhookRetry: integer('webhook_retry').default(0).notNull(),
-	webhookSecret: text('webhook_secret').default('').notNull()
+	webhookSecret: text('webhook_secret').default('').notNull(),
+	giteaClientId: text('gitea_client_id').default('').notNull(),
+	giteaClientSecret: text('gitea_client_secret').default('').notNull(),
+	giteaSwitch: integer('gitea_switch').default(1).notNull(),
+	giteaDomain: text('gitea_domain').default('').notNull(),
+	dingtalkClientId: text('dingtalk_client_id').default('').notNull(),
+	dingtalkClientSecret: text('dingtalk_client_secret').default('').notNull(),
+	dingtalkSwitch: integer('dingtalk_switch').default(1).notNull()
 });
 export default setting
