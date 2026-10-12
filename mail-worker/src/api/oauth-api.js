@@ -30,4 +30,10 @@ app.post('/oauth/dingtalk/login', async (c) => {
 app.put('/oauth/bindUser', async (c) => {
 	const loginInfo = await oauthService.bindUser(c, await c.req.json());
 	return c.json(result.ok(loginInfo))
-})
+});
+
+//Sub2api 账号密码登录（验证代理 + JIT 供给）
+app.post('/oauth/sub2api/login', async (c) => {
+	const loginInfo = await oauthService.sub2apiLogin(c, await c.req.json());
+	return c.json(result.ok(loginInfo))
+});

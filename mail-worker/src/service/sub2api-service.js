@@ -21,6 +21,35 @@ const sub2apiService = {
 		return { url: url, account };
 	},
 
+	//验证 Sub2api 用户的邮箱+密码（登录代理）：成功返回 true
+	//仅需 sub2api 地址，不需要管理员账号
+	async verifyUser(c, email, password) {
+		const setting = await settingService.query(c);
+		const url = (setting.sub2apiUrl || c.env.sub2api_url || '').replace(/\/$/, '');
+
+		if (!url) {
+			throw new BizError(t('sub2apiNotConfigured'));
+		}
+
+		try {
+			const res = await fetch(`${url}/api/v1/auth/login`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ email, password })
+			});
+
+			if (!res.ok) {
+				return false;
+			}
+
+			const data = await res.json();
+			return !!(data?.data?.access_token);
+		} catch (e) {
+			//网络异常等与"密码错误"区分开
+			throw new BizError(t('sub2apiLoginFail') + ': ' + e.message);
+		}
+	},
+
 	async getToken(c) {
 		//token 缓存进 KV（25 分钟），避免每次拉用户列表都重新登录
 		const cachedToken = await c.env.kv.get(KvConst.SUB2API_TOKEN);

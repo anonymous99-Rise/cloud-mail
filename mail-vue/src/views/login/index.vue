@@ -49,6 +49,17 @@
             <Icon v-else :icon="p.icon" width="18" height="18" style="margin-right: 10px" />
             {{ p.label }}
           </el-button>
+          <div v-if="settingStore.settings.sub2apiLogin" class="sub2api-login">
+            <div class="sub2api-toggle" @click="sub2apiOpen = !sub2apiOpen">
+              <span>{{ sub2apiOpen ? $t('sub2apiCollapse') : $t('sub2apiLogin') }}</span>
+              <Icon icon="mingcute:down-small-fill" width="16" height="16" :style="sub2apiOpen ? 'transform: rotate(180deg)' : ''"/>
+            </div>
+            <template v-if="sub2apiOpen">
+              <el-input v-model="sub2apiForm.email" :placeholder="$t('sub2apiEmail')" autocomplete="off" @keyup.enter="sub2apiLogin"/>
+              <el-input v-model="sub2apiForm.password" :placeholder="$t('password')" type="password" autocomplete="off" @keyup.enter="sub2apiLogin"/>
+              <el-button class="btn" @click="sub2apiLogin" :loading="sub2apiLoading">{{ $t('loginBtn') }}</el-button>
+            </template>
+          </div>
         </div>
         <div v-show="show !== 'login'">
           <el-input :class="!hideLoginDomain ? 'email-input' : ''" v-model="registerForm.email" type="text" :placeholder="$t('emailAccount')"
@@ -156,6 +167,7 @@ import {useRoute} from "vue-router";
 import {computed, nextTick, reactive, ref} from "vue";
 import {login} from "@/request/login.js";
 import {register} from "@/request/login.js";
+import {oauthSub2apiLogin} from "@/request/login.js";
 import {websiteConfig} from "@/request/setting.js";
 import {isEmail} from "@/utils/verify-utils.js";
 import {useSettingStore} from "@/store/setting.js";
@@ -319,6 +331,40 @@ const loginFns = {
   google: oauthGoogleLogin,
   gitea: oauthGiteaLogin,
   dingtalk: oauthDingtalkLogin,
+}
+
+//Sub2api 账号密码登录（后端验证代理 + 自动供给身份）
+const sub2apiOpen = ref(false)
+const sub2apiLoading = ref(false)
+const sub2apiForm = reactive({
+  email: '',
+  password: ''
+})
+
+function sub2apiLogin() {
+
+  if (sub2apiLoading.value) return
+  if (!sub2apiForm.email || !sub2apiForm.password) return
+
+  sub2apiLoading.value = true
+  oauthSub2apiLogin(sub2apiForm.email, sub2apiForm.password).then(data => {
+    bindForm.oauthUserId = data.userInfo.oauthUserId;
+
+    if (!data.token) {
+      showBindForm.value = true
+      ElMessage({
+        message: t('oauthBindHint'),
+        type: 'warning',
+        duration: 4000,
+        plain: true,
+      })
+      return;
+    }
+
+    saveToken(data.token);
+  }).finally(() => {
+    sub2apiLoading.value = false
+  })
 }
 
 oauthGetUser();
@@ -714,6 +760,29 @@ function submitRegister() {
     span {
       color: var(--login-switch-color);
       cursor: pointer;
+    }
+  }
+
+  .sub2api-login {
+    margin-top: 10px;
+
+    .sub2api-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      font-size: 13px;
+      color: var(--login-switch-color);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .el-input {
+      margin-top: 10px;
+    }
+
+    .btn {
+      margin-top: 10px;
     }
   }
 

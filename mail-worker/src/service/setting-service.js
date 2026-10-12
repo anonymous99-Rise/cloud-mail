@@ -251,6 +251,7 @@ const settingService = {
 			dingtalkClientId: settingRow.dingtalkClientId,
 			dingtalkSwitch: settingRow.dingtalkSwitch,
 			minEmailPrefix: settingRow.minEmailPrefix,
+			sub2apiLogin: !!settingRow.sub2apiUrl,
 			projectLink: settingRow.projectLink
 		};
 	},

@@ -1,14 +1,14 @@
 import BizError from "../error/biz-error";
 import orm from "../entity/orm";
 import {oauth} from "../entity/oauth";
-import {account} from "../entity/account";
-import { eq, inArray, and, sql } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import userService from "./user-service";
 import loginService from "./login-service";
-import accountService from "./account-service";
-import roleService from "./role-service";
 import cryptoUtils from "../utils/crypto-utils";
 import settingService from "./setting-service";
+import verifyRecordService from "./verify-record-service";
+import sub2apiService from "./sub2api-service";
+import unifyService from "./unify-service";
 import {t} from '../i18n/i18n';
 
 const oauthService = {
@@ -268,6 +268,7 @@ const oauthService = {
 
 		userInfo.oauthUserId = String(userInfo.unionId || userInfo.openId);
 		userInfo.username = userInfo.nick;
+		userInfo.name = userInfo.name || userInfo.nick;
 		userInfo.avatar = userInfo.pic;
 		userInfo.platform = 'dingtalk';
 
@@ -279,9 +280,23 @@ const oauthService = {
 		const oauthRow = await this.saveUser(c, userInfo);
 		let userRow = await userService.selectByIdIncludeDel(c, oauthRow.userId);
 
-		//无绑定时：Gitea 平台按「统一邮箱前缀 == gitea 用户名」认领管理员预分配的无主邮箱
-		if (!userRow && userInfo.platform === 'gitea' && userInfo.username) {
-			userRow = await this.claimAssignedAccount(c, oauthRow, userInfo.username);
+		if (!userRow) {
+			//Gitea 平台：按「统一邮箱前缀 == gitea 用户名」认领管理员预分配的无主邮箱
+			if (userInfo.platform === 'gitea' && userInfo.username) {
+				userRow = await unifyService.claimAssignedAccount(c, oauthRow, userInfo.username);
+			}
+
+			//Sub2api / 钉钉：JIT 供给——自动建 Gitea 身份 + 统一邮箱 + 登录用户
+			if (!userRow && (userInfo.platform === 'sub2api' || userInfo.platform === 'dingtalk')) {
+				//sub2api: username 即实名；dingtalk: name 是实名(username 是昵称)
+				const realName = userInfo.platform === 'sub2api'
+					? (userInfo.username || userInfo.name)
+					: (userInfo.name || userInfo.username);
+				userRow = await unifyService.jitProvision(c, oauthRow, {
+					realName,
+					preferredUsername: userInfo.preferredUsername || null
+				});
+			}
 		}
 
 		if (!userRow) {
@@ -292,40 +307,42 @@ const oauthService = {
 		return { userInfo: oauthRow, token: JwtToken };
 	},
 
-	//认领统一邮箱分配的无主账号（account.userId=0 且前缀==gitea用户名），绑 user + oauth
-	async claimAssignedAccount(c, oauthRow, giteaUsername) {
+	//Sub2api 账号密码登录：转发 Sub2api 登录 API 验证，成功后 JIT 供给身份（Gitea+邮箱+用户）
+	async sub2apiLogin(c, params) {
 
-		const prefix = (giteaUsername || '').trim().toLowerCase();
-		if (!prefix) {
-			return null;
+		const { email, password } = params;
+
+		if (!email || !password) {
+			throw new BizError(t('emailAndPwdEmpty'));
 		}
 
-		const accountRow = await orm(c).select().from(account)
-			.where(and(
-				sql`lower(${account.email}) = ${prefix + '@%'}`,
-				eq(account.userId, 0),
-				eq(account.isDel, 0)
-			))
-			.get();
-
-		if (!accountRow) {
-			return null;
+		//登录限速：与主登录共用同 IP 失败计数
+		const failCount = await verifyRecordService.getLoginFailCount(c);
+		if (failCount >= 10) {
+			throw new BizError(t('loginRateLimit'), 429);
 		}
 
-		//user 可能已存在（分配时创建），不存在则建
-		let userRow = await userService.selectByEmailIncludeDel(c, accountRow.email);
-		if (!userRow) {
-			const roleRow = await roleService.selectDefaultRole(c);
-			const { salt, hash } = await cryptoUtils.hashPassword(cryptoUtils.genRandomPwd(24));
-			const userId = await userService.insert(c, { email: accountRow.email, regKeyId: 0, password: hash, salt, type: roleRow.roleId });
-			userRow = await userService.selectById(c, userId);
+		const verified = await sub2apiService.verifyUser(c, email, password);
+		if (!verified) {
+			await verifyRecordService.increaseLoginFailCount(c);
+			throw new BizError(t('IncorrectPwd'));
 		}
 
-		await accountService.bindUser(c, accountRow.email, userRow.userId);
-		await orm(c).update(oauth).set({ userId: userRow.userId }).where(eq(oauth.oauthUserId, oauthRow.oauthUserId)).run();
-		console.log(JSON.stringify({ audit: 'email-unify', action: 'oauth.claim', account: accountRow.email, oauthUserId: oauthRow.oauthUserId, time: new Date().toISOString() }));
+		//定位 Sub2api 用户拿实名和稳定 ID（oauthUserId 带平台前缀，避免与其他平台数字 ID 撞）
+		const users = await sub2apiService.listUsers(c);
+		const su = users.find(u => (u.email || '').toLowerCase() === email.trim().toLowerCase());
+		const realName = su?.username || email.split('@')[0];
+		const oauthUserId = su ? `sub2api_${su.id}` : `sub2api_${email.trim().toLowerCase()}`;
 
-		return userRow;
+		const userInfo = {
+			oauthUserId,
+			username: realName,
+			name: realName,
+			avatar: null,
+			platform: 'sub2api'
+		};
+
+		return await this.saveAndLogin(c, userInfo);
 	},
 
 	async saveUser(c, userInfo) {

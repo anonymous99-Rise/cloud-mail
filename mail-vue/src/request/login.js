@@ -11,3 +11,7 @@ export function logout() {
 export function register(form) {
     return http.post('/register', form)
 }
+
+export function oauthSub2apiLogin(email, password) {
+    return http.post('/oauth/sub2api/login', {email, password})
+}
