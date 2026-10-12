@@ -125,6 +125,21 @@ cloud-mail
 3. 推送代码到 main 分支，GitHub Actions 自动完成构建和部署
 4. 部署完成后 CI 会自动初始化数据库
 
+## 版本发布
+
+版本号以 `mail-worker/package.json` 的 `version` 为单一事实源，前端构建时自动注入，无需手动改代码。
+
+在 `mail-worker` 目录执行：
+
+```bash
+pnpm release          # 补丁版本（3.4.0 → 3.4.1）
+pnpm release:minor    # 功能版本（3.4.0 → 3.5.0）
+pnpm release:major    # 大版本（3.4.0 → 4.0.0）
+pnpm release 3.6.0    # 显式指定版本号
+```
+
+脚本自动完成：计算新版本 → 从上个 tag 收集 commit 按 feat/fix 分组生成更新说明 → 写入 [CHANGELOG.md](CHANGELOG.md) → commit + tag → 双推 GitHub/Gitea → GitHub Actions 自动创建 Release。
+
 ## 关于
 
 - **版本**：[Releases](https://github.com/anonymous99-Rise/cloud-mail/releases)

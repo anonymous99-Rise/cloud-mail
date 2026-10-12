@@ -1,0 +1,80 @@
+name: 📦 Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  Release:
+    name: 🏷️ Create GitHub Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🚚 检出代码 / Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📝 生成更新说明 / Generate release notes
+        id: notes
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          PREV=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || git tag --sort=-creatordate | grep -v "^${TAG}$" | head -1)
+
+          echo "## 更新说明" > notes.md
+          echo "" >> notes.md
+
+          if [ -n "$PREV" ]; then
+            RANGE="${PREV}..${TAG}"
+            echo "<sub>${PREV} → ${TAG}</sub>" >> notes.md
+            echo "" >> notes.md
+          else
+            RANGE="${TAG}"
+          fi
+
+          declare -A SECTIONS
+          declare -A ORDER=( ["feat"]="### ✨ 新功能" ["fix"]="### 🐛 问题修复" ["perf"]="### ⚡ 性能优化" ["refactor"]="### ♻️ 重构" ["docs"]="### 📝 文档" ["other"]="### 🔧 其他" )
+
+          while IFS= read -r subject; do
+            [ -z "$subject" ] && continue
+            case "$subject" in
+              release:*) continue ;;
+              feat*) key="feat" ;;
+              fix*) key="fix" ;;
+              perf*) key="perf" ;;
+              refactor*) key="refactor" ;;
+              docs*) key="docs" ;;
+              *) key="other" ;;
+            esac
+            desc=$(echo "$subject" | sed -E 's/^(feat|fix|perf|refactor|docs|chore|style|test|ci|build)(\([^)]*\))?!?: ?//I')
+            SECTIONS[$key]+="- ${desc}"$'\n'
+          done < <(git log ${RANGE} --pretty=format:%s)
+
+          for key in feat fix perf refactor docs other; do
+            if [ -n "${SECTIONS[$key]}" ]; then
+              echo "${ORDER[$key]}" >> notes.md
+              echo "" >> notes.md
+              echo "${SECTIONS[$key]}" >> notes.md
+            fi
+          done
+
+          if [ ! -s "$(tail -c +1 notes.md 2>/dev/null || echo notes.md)" ]; then
+            echo "- 无变更记录" >> notes.md
+          fi
+
+          {
+            echo 'BODY<<EOF'
+            cat notes.md
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 🏷️ 创建 Release / Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body: ${{ steps.notes.outputs.BODY }}
+          generate_release_notes: false

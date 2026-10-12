@@ -984,7 +984,8 @@ defineOptions({
   name: 'sys-setting'
 })
 
-const currentVersion = 'v3.3.0'
+//构建时由 vite 从 mail-worker/package.json 注入，发布流程由 release 脚本统一维护
+const currentVersion = import.meta.env.VITE_APP_VERSION || ''
 const hasUpdate = ref(false)
 let getUpdateErrorCount = 1;
 const {t, locale} = useI18n();

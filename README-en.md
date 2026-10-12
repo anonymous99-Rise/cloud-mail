@@ -85,6 +85,21 @@ Hope Mail (built on top of the open-source project [cloud-mail](https://github.c
 3. Push to the main branch — GitHub Actions builds and deploys automatically.
 4. Database initialization runs automatically after deployment.
 
+## Versioning
+
+The version lives in `mail-worker/package.json` (`version` field) as the single source of truth, injected into the frontend at build time — no manual code edits needed.
+
+Run from the `mail-worker` directory:
+
+```bash
+pnpm release          # patch (3.4.0 → 3.4.1)
+pnpm release:minor    # minor (3.4.0 → 3.5.0)
+pnpm release:major    # major (3.4.0 → 4.0.0)
+pnpm release 3.6.0    # explicit version
+```
+
+The script automatically: bumps the version → collects commits since the last tag, grouped by feat/fix → writes [CHANGELOG.md](CHANGELOG.md) → commits + tags → pushes to GitHub/Gitea → GitHub Actions creates the Release.
+
 ## About
 
 - **Version**: [Releases](https://github.com/anonymous99-Rise/cloud-mail/releases)

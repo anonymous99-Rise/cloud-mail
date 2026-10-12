@@ -1,12 +1,15 @@
 {
 	"name": "mail-worker",
-	"version": "0.0.0",
+	"version": "3.4.0",
 	"private": true,
 	"scripts": {
 		"dev": "wrangler dev --config wrangler-dev.toml",
 		"test": "wrangler deploy --config wrangler-test.toml",
 		"deploy": "wrangler deploy",
-		"start": "wrangler dev"
+		"start": "wrangler dev",
+		"release": "node ../scripts/release.js",
+		"release:minor": "node ../scripts/release.js minor",
+		"release:major": "node ../scripts/release.js major"
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.7.5",
