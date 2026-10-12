@@ -149,3 +149,4 @@ pnpm release 3.6.0    # 显式指定版本号
 ## 许可证
 
 本项目采用 [MIT](LICENSE) 许可证。基于 [maillab/cloud-mail](https://github.com/maillab/cloud-mail) 开发，感谢原作者。
+# auto-versioned by CI
