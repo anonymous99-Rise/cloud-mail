@@ -61,6 +61,7 @@ const requirePerms = [
 	'/regKey/history',
 	'/gitea/match',
 	'/gitea/assign',
+	'/gitea/assignAll',
 	'/gitea/create',
 	'/gitea/pool'
 ];
@@ -92,7 +93,7 @@ const premKey = {
 	'reg-key:query': ['/regKey/list','/regKey/history'],
 	'reg-key:delete': ['/regKey/delete','/regKey/clearNotUse'],
 	'gitea:match': ['/gitea/match', '/gitea/pool'],
-	'gitea:set': ['/gitea/assign', '/gitea/create'],
+	'gitea:set': ['/gitea/assign', '/gitea/assignAll', '/gitea/create'],
 };
 
 app.use('*', async (c, next) => {

@@ -16,6 +16,23 @@ const giteaService = {
 		return { domain: domain, token: token };
 	},
 
+	//把 Gitea 错误响应转成带具体原因的 BizError
+	async toError(res) {
+		if (res.status === 401) {
+			return new BizError(t('giteaUnauthorized'));
+		}
+		let detail = res.statusText;
+		try {
+			const body = await res.json();
+			if (body && body.message) {
+				detail = body.message;
+			}
+		} catch (e) {
+			//响应不是 JSON，保持 statusText
+		}
+		return new BizError('Gitea: ' + detail);
+	},
+
 	//分页拉全 Gitea 用户，过滤离职/禁登录账号
 	async listUsers(c) {
 
@@ -29,7 +46,7 @@ const giteaService = {
 			});
 
 			if (!res.ok) {
-				throw new BizError('Gitea: ' + res.statusText);
+				throw await this.toError(res);
 			}
 
 			const rows = await res.json();
@@ -67,7 +84,7 @@ const giteaService = {
 		});
 
 		if (!res.ok) {
-			throw new BizError('Gitea: ' + res.statusText);
+			throw await this.toError(res);
 		}
 
 		return await res.json();
@@ -95,7 +112,7 @@ const giteaService = {
 		});
 
 		if (!res.ok && res.status !== 422) {
-			throw new BizError('Gitea: ' + res.statusText);
+			throw await this.toError(res);
 		}
 
 		return await res.json();

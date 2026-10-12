@@ -195,8 +195,8 @@ const oauthProviders = computed(() => {
     { key: 'google', label: 'Google', icon: 'devicon:google', iconType: 'iconify' },
     { key: 'github', label: 'GitHub', icon: 'codicon:github-inverted', iconType: 'iconify' },
     { key: 'linuxdo', label: 'LinuxDo', icon: '/image/linuxdo.webp', iconType: 'image' },
-    { key: 'gitea', label: 'Gitea', icon: 'devicon:gitea', iconType: 'iconify' },
-    { key: 'dingtalk', label: '钉钉', icon: 'fluent:chat-12-filled', iconType: 'iconify' },
+    { key: 'gitea', label: 'Gitea', icon: 'simple-icons:gitea', iconType: 'iconify' },
+    { key: 'dingtalk', label: '钉钉', icon: 'ri:dingding-fill', iconType: 'iconify' },
   ]
   return allProviders.filter(p => settingStore.settings[p.key + 'Switch'] === 0)
 })

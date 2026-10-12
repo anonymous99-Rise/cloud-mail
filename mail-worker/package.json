@@ -21,6 +21,7 @@
 		"hono": "4.12.16",
 		"i18next": "^25.3.2",
 		"linkedom": "^0.18.10",
+		"pinyin-pro": "^3.29.5",
 		"postal-mime": "^2.4.3",
 		"resend": "^6.4.1",
 		"ua-parser-js": "^2.0.3",

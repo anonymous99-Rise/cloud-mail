@@ -138,6 +138,14 @@ const settingService = {
 			params.webhookUrl = domainUtils.toOssDomain(params.webhookUrl) || '';
 		}
 
+		//get() 返回的是脱敏值（如 abcd1234******），整表回传时不能覆盖真实密钥
+		const secretKeys = ['giteaAdminToken', 's3AccessKey', 's3SecretKey', 'tgBotToken', 'secretKey'];
+		secretKeys.forEach(key => {
+			if (typeof params[key] === 'string' && params[key].endsWith('******')) {
+				delete params[key];
+			}
+		});
+
 		params.resendTokens = JSON.stringify(resendTokens);
 
 		await orm(c).update(setting).set({ ...params }).returning().get();

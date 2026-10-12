@@ -11,6 +11,10 @@
         <el-option key="matched" :label="$t('matched')" value="matched"/>
         <el-option key="unmatched" :label="$t('unmatched')" value="unmatched"/>
       </el-select>
+      <el-button class="assign-all-btn" size="small" type="warning" :loading="assignAllLoading"
+                 @click="assignAll" v-perm="'gitea:set'">
+        {{ $t('assignAll') }}
+      </el-button>
       <Icon class="icon" icon="ion:reload" width="18" height="18" @click="refresh"/>
     </div>
     <el-scrollbar class="scrollbar">
@@ -51,7 +55,7 @@
 
 <script setup>
 import {computed, ref} from 'vue'
-import {giteaAssign, giteaCreate, giteaMatch} from '@/request/gitea.js'
+import {giteaAssign, giteaAssignAll, giteaCreate, giteaMatch} from '@/request/gitea.js'
 import {Icon} from "@iconify/vue";
 import loading from "@/components/loading/index.vue";
 import {useI18n} from 'vue-i18n';
@@ -66,6 +70,7 @@ const filter = ref('all')
 const first = ref(true)
 const tableLoading = ref(false)
 const assignLoading = ref('')
+const assignAllLoading = ref(false)
 const list = ref([])
 
 const filteredList = computed(() => {
@@ -96,6 +101,12 @@ function refresh() {
         plain: true,
       })
     }
+  }).catch(() => {
+    ElMessage({
+      message: t('loadFailMsg'),
+      type: 'error',
+      plain: true,
+    })
   }).finally(() => {
     tableLoading.value = false
   })
@@ -138,6 +149,30 @@ function create(row) {
   })
 }
 
+function assignAll() {
+
+  if (assignAllLoading.value) return
+
+  ElMessageBox.confirm(
+      t('assignAllConfirm', {msg: list.value.filter(row => row.giteaUsername && !row.unified).length}),
+      t('warning'),
+      {type: 'warning'}
+  ).then(() => {
+    assignAllLoading.value = true
+    giteaAssignAll().then(data => {
+      ElMessage({
+        message: t('assignAllDone', {total: data.total, fail: data.failCount}),
+        type: data.failCount > 0 ? 'warning' : 'success',
+        plain: true,
+      })
+      refresh()
+    }).finally(() => {
+      assignAllLoading.value = false
+    })
+  }).catch(() => {
+  })
+}
+
 refresh()
 
 </script>
@@ -163,6 +198,10 @@ refresh()
 
     .search {
       margin-left: 10px;
+    }
+
+    .assign-all-btn {
+      margin-left: 8px;
     }
   }
 

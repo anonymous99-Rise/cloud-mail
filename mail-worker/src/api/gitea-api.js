@@ -5,6 +5,7 @@ import sub2apiService from "../service/sub2api-service";
 import settingService from "../service/setting-service";
 import accountService from "../service/account-service";
 import emailUtils from "../utils/email-utils";
+import { pinyin } from 'pinyin-pro';
 import { t } from '../i18n/i18n';
 import BizError from "../error/biz-error";
 
@@ -12,7 +13,7 @@ import BizError from "../error/biz-error";
 app.get('/gitea/match', async (c) => {
 
 	const setting = await settingService.query(c);
-	const domainList = setting.domainList.map(item => item.substring(1));
+	const domainList = getDomains(setting);
 
 	const [giteaUsers, sub2apiResult] = await Promise.all([
 		giteaService.listUsers(c),
@@ -23,16 +24,21 @@ app.get('/gitea/match', async (c) => {
 
 	const sub2apiMap = {};
 	sub2apiUsers.forEach(user => {
-		sub2apiMap[user.username] = user;
-		//实名兼容部门后缀：李锐 ↔ 李锐-行市部
-		const dashIndex = user.username.indexOf('-');
-		if (dashIndex > 0 && !sub2apiMap[user.username.substring(0, dashIndex)]) {
-			sub2apiMap[user.username.substring(0, dashIndex)] = user;
+		const username = normalizeName(user.username);
+		if (!username) return;
+		sub2apiMap[username] = user;
+		//实名兼容部门后缀：李锐 ↔ 李锐-行市部；取最后一个 - 切分，避免误切如 张三-丰
+		const dashIndex = username.lastIndexOf('-');
+		if (dashIndex > 1) {
+			const baseName = username.substring(0, dashIndex);
+			if (!sub2apiMap[baseName]) {
+				sub2apiMap[baseName] = user;
+			}
 		}
 	});
 
 	const list = giteaUsersList.map(gitea => {
-		const sub2api = sub2apiMap[gitea.fullName] || null;
+		const sub2api = sub2apiMap[normalizeName(gitea.fullName)] || null;
 		if (sub2api) {
 			delete sub2apiMap[gitea.fullName];
 		}
@@ -63,6 +69,11 @@ app.get('/gitea/match', async (c) => {
 	return c.json(result.ok({ list, sub2apiError: sub2apiResult.error }))
 });
 
+//实名匹配归一化：去首尾空白 + 小写，避免 尾随空格/大小写 导致匹配失败
+function normalizeName(name) {
+	return (name || '').trim().toLowerCase();
+}
+
 //给 Gitea 用户指派统一邮箱：自动生成 <gitea用户名>@域名，同时写入 cloud-mail 账号表并修改 Gitea
 app.post('/gitea/assign', async (c) => {
 
@@ -73,13 +84,39 @@ app.post('/gitea/assign', async (c) => {
 	}
 
 	const setting = await settingService.query(c);
-	const domain = setting.domainList[0].substring(1);
-	const email = giteaUsername + '@' + domain;
-
-	await createAccountIfMissing(c, email);
-	await giteaService.modifyUserEmail(c, giteaUsername, email);
+	const domain = getDomains(setting)[0];
+	const email = await assignEmail(c, giteaUsername, domain);
 
 	return c.json(result.ok({ email }));
+});
+
+//一键批量指派：对所有未统一的 Gitea 用户执行 assign，返回逐个结果
+app.post('/gitea/assignAll', async (c) => {
+
+	const domain = getDomains(await settingService.query(c))[0];
+	const giteaUsers = await giteaService.listUsers(c);
+	const domainList = getDomains(await settingService.query(c));
+
+	const targets = giteaUsers.filter(gitea =>
+		!domainList.some(d => gitea.email.endsWith('@' + d))
+	);
+
+	if (targets.length === 0) {
+		throw new BizError(t('assignAllNoTarget'));
+	}
+
+	const results = [];
+	for (const gitea of targets) {
+		try {
+			const email = await assignEmail(c, gitea.username, domain);
+			results.push({ giteaUsername: gitea.username, email, success: true });
+		} catch (e) {
+			results.push({ giteaUsername: gitea.username, success: false, error: e.message });
+		}
+	}
+
+	const failCount = results.filter(r => !r.success).length;
+	return c.json(result.ok({ total: results.length, failCount, results }));
 });
 
 //给未匹配的 Sub2api 实名创建 Gitea 账号并分配邮箱
@@ -92,12 +129,18 @@ app.post('/gitea/create', async (c) => {
 	}
 
 	const setting = await settingService.query(c);
-	const domain = setting.domainList[0].substring(1);
+	const domain = getDomains(setting)[0];
 	const emailPrefix = await genEmailPrefix(c, fullName);
 	const email = emailPrefix + '@' + domain;
 
 	await createAccountIfMissing(c, email);
-	await giteaService.createUser(c, { username: emailPrefix, email, fullName });
+	try {
+		await giteaService.createUser(c, { username: emailPrefix, email, fullName });
+	} catch (e) {
+		auditLog(c, 'create.fail', fullName, email, e.message);
+		throw e;
+	}
+	auditLog(c, 'create', fullName, email);
 
 	return c.json(result.ok({ email }));
 });
@@ -107,6 +150,42 @@ app.get('/gitea/pool', async (c) => {
 	const list = await accountService.selectAllEmails(c);
 	return c.json(result.ok(list))
 });
+
+//取去除 @ 前缀的域名列表，为空时直接报错而非 TypeError
+function getDomains(setting) {
+	if (!setting.domainList || setting.domainList.length === 0) {
+		throw new BizError(t('noDomainVariable'));
+	}
+	return setting.domainList.map(item => item.substring(1));
+}
+
+//assign 主体：建 cloud-mail 账号 → 改 Gitea 邮箱，第二步失败时带上明确步骤信息
+async function assignEmail(c, giteaUsername, domain) {
+	const email = giteaUsername + '@' + domain;
+	await createAccountIfMissing(c, email);
+	try {
+		await giteaService.modifyUserEmail(c, giteaUsername, email);
+	} catch (e) {
+		auditLog(c, 'assign.fail', giteaUsername, email, e.message);
+		throw new BizError(t('giteaCreateStepFail') + '：' + e.message);
+	}
+	auditLog(c, 'assign', giteaUsername, email);
+	return email;
+}
+
+//操作审计日志：进 Cloudflare Workers observability（结构化单行 JSON）
+function auditLog(c, action, target, email, error) {
+	const operator = c.get('user')?.email || 'unknown';
+	console.log(JSON.stringify({
+		audit: 'email-unify',
+		action,
+		operator,
+		target,
+		email,
+		error: error || undefined,
+		time: new Date().toISOString()
+	}));
+}
 
 async function createAccountIfMissing(c, email) {
 
@@ -124,15 +203,31 @@ async function createAccountIfMissing(c, email) {
 	await accountService.insert(c, { userId: 0, email, name: emailUtils.getName(email) });
 }
 
-//根据实名生成邮箱前缀：全字母/数字直接用，含中文则用拼音不可行，改用时间戳保证唯一
+//根据实名生成邮箱前缀：全字母/数字直接用，中文转全拼（如 李锐 → lirui），非中文字符丢弃
 async function genEmailPrefix(c, fullName) {
 
-	if (/^[a-zA-Z0-9_-]+$/.test(fullName)) {
-		return fullName.toLowerCase();
+	const cleaned = fullName.trim();
+	let prefix;
+	if (/^[a-zA-Z0-9_-]+$/.test(cleaned)) {
+		prefix = cleaned.toLowerCase();
+	} else {
+		const pinyinName = pinyin(cleaned, { toneType: 'none', type: 'array', nonZh: 'removed' })
+			.join('').toLowerCase().replace(/[^a-z0-9]/g, '');
+		//极端兜底：过滤后无有效字符（如全符号实名），用时间戳保证唯一
+		prefix = pinyinName || ('u' + Date.now().toString(36));
 	}
 
-	const { num } = await accountService.countUserAccount(c, 0);
-	return 'u' + Date.now().toString(36) + (num % 10);
+	//重名加数字后缀：lirui → lirui2 → lirui3
+	const giteaUsers = await giteaService.listUsers(c);
+	const used = new Set(giteaUsers.map(u => u.username.toLowerCase()));
+	if (!used.has(prefix)) {
+		return prefix;
+	}
+	for (let i = 2; ; i++) {
+		if (!used.has(prefix + i)) {
+			return prefix + i;
+		}
+	}
 }
 
 export default app;

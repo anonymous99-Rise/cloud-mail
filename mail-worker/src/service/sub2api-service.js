@@ -1,5 +1,6 @@
 import BizError from "../error/biz-error";
 import settingService from "./setting-service";
+import KvConst from '../const/kv-const';
 import { t } from '../i18n/i18n';
 
 const sub2apiService = {
@@ -21,6 +22,12 @@ const sub2apiService = {
 	},
 
 	async getToken(c) {
+		//token 缓存进 KV（25 分钟），避免每次拉用户列表都重新登录
+		const cachedToken = await c.env.kv.get(KvConst.SUB2API_TOKEN);
+		if (cachedToken) {
+			return cachedToken;
+		}
+
 		const config = await this.assertConfig(c);
 
 		const res = await fetch(`${config.url}/api/v1/auth/login`, {
@@ -30,14 +37,16 @@ const sub2apiService = {
 		});
 
 		if (!res.ok) {
-			throw new BizError('Sub2api: ' + res.statusText);
+			throw new BizError(t('sub2apiLoginFail') + ': ' + res.statusText);
 		}
 
 		const data = await res.json();
 
 		if (!data.data || !data.data.access_token) {
-			throw new BizError('Sub2api: ' + (data.message || 'login failed'));
+			throw new BizError(t('sub2apiLoginFail') + ': ' + (data.message || 'login failed'));
 		}
+
+		await c.env.kv.put(KvConst.SUB2API_TOKEN, data.data.access_token, { expirationTtl: 1500 });
 
 		return data.data.access_token;
 	},
