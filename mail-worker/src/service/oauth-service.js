@@ -1,9 +1,12 @@
 import BizError from "../error/biz-error";
 import orm from "../entity/orm";
 import {oauth} from "../entity/oauth";
-import { eq, inArray } from 'drizzle-orm';
+import {account} from "../entity/account";
+import { eq, inArray, and, sql } from 'drizzle-orm';
 import userService from "./user-service";
 import loginService from "./login-service";
+import accountService from "./account-service";
+import roleService from "./role-service";
 import cryptoUtils from "../utils/crypto-utils";
 import settingService from "./setting-service";
 import {t} from '../i18n/i18n';
@@ -274,7 +277,12 @@ const oauthService = {
 	async saveAndLogin(c, userInfo) {
 
 		const oauthRow = await this.saveUser(c, userInfo);
-		const userRow = await userService.selectByIdIncludeDel(c, oauthRow.userId);
+		let userRow = await userService.selectByIdIncludeDel(c, oauthRow.userId);
+
+		//无绑定时：Gitea 平台按「统一邮箱前缀 == gitea 用户名」认领管理员预分配的无主邮箱
+		if (!userRow && userInfo.platform === 'gitea' && userInfo.username) {
+			userRow = await this.claimAssignedAccount(c, oauthRow, userInfo.username);
+		}
 
 		if (!userRow) {
 			return { userInfo: oauthRow, token: null };
@@ -282,6 +290,42 @@ const oauthService = {
 
 		const JwtToken = await loginService.login(c, { email: userRow.email, password: null }, true);
 		return { userInfo: oauthRow, token: JwtToken };
+	},
+
+	//认领统一邮箱分配的无主账号（account.userId=0 且前缀==gitea用户名），绑 user + oauth
+	async claimAssignedAccount(c, oauthRow, giteaUsername) {
+
+		const prefix = (giteaUsername || '').trim().toLowerCase();
+		if (!prefix) {
+			return null;
+		}
+
+		const accountRow = await orm(c).select().from(account)
+			.where(and(
+				sql`lower(${account.email}) = ${prefix + '@%'}`,
+				eq(account.userId, 0),
+				eq(account.isDel, 0)
+			))
+			.get();
+
+		if (!accountRow) {
+			return null;
+		}
+
+		//user 可能已存在（分配时创建），不存在则建
+		let userRow = await userService.selectByEmailIncludeDel(c, accountRow.email);
+		if (!userRow) {
+			const roleRow = await roleService.selectDefaultRole(c);
+			const { salt, hash } = await cryptoUtils.hashPassword(cryptoUtils.genRandomPwd(24));
+			const userId = await userService.insert(c, { email: accountRow.email, regKeyId: 0, password: hash, salt, type: roleRow.roleId });
+			userRow = await userService.selectById(c, userId);
+		}
+
+		await accountService.bindUser(c, accountRow.email, userRow.userId);
+		await orm(c).update(oauth).set({ userId: userRow.userId }).where(eq(oauth.oauthUserId, oauthRow.oauthUserId)).run();
+		console.log(JSON.stringify({ audit: 'email-unify', action: 'oauth.claim', account: accountRow.email, oauthUserId: oauthRow.oauthUserId, time: new Date().toISOString() }));
+
+		return userRow;
 	},
 
 	async saveUser(c, userInfo) {

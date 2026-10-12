@@ -67,6 +67,7 @@ const zh = {
     assignEmail: '分配邮箱',
     createGitea: '创建Gitea账号',
     assignAll: '批量指派',
+    assignDomain: '域名',
     oauthLoggingIn: '登录中...',
     oauthBindEmail: '注册邮箱',
     oauthBindHint: '请注册绑定一个邮箱',

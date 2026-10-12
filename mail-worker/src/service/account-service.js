@@ -223,6 +223,11 @@ const accountService = {
 		await orm(c).update(account).set({isDel: isDel.NORMAL}).where(eq(account.email, email)).run();
 	},
 
+	//把无主邮箱绑定到用户（统一邮箱分配/OAuth 认领场景）
+	async bindUser(c, email, userId) {
+		await orm(c).update(account).set({ userId }).where(eq(account.email, email)).run();
+	},
+
 	async restoreByUserId(c, userId) {
 		await orm(c).update(account).set({isDel: isDel.NORMAL}).where(eq(account.userId, userId)).run();
 	},

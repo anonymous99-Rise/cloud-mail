@@ -4,6 +4,9 @@ import giteaService from "../service/gitea-service";
 import sub2apiService from "../service/sub2api-service";
 import settingService from "../service/setting-service";
 import accountService from "../service/account-service";
+import userService from "../service/user-service";
+import roleService from "../service/role-service";
+import cryptoUtils from "../utils/crypto-utils";
 import emailUtils from "../utils/email-utils";
 import { pinyin } from 'pinyin-pro';
 import { t } from '../i18n/i18n';
@@ -77,14 +80,15 @@ function normalizeName(name) {
 //给 Gitea 用户指派统一邮箱：自动生成 <gitea用户名>@域名，同时写入 cloud-mail 账号表并修改 Gitea
 app.post('/gitea/assign', async (c) => {
 
-	const { giteaUsername } = await c.req.json();
+	const { giteaUsername, domain: domainParam } = await c.req.json();
 
 	if (!giteaUsername) {
 		throw new BizError(t('emptyEmail'));
 	}
 
 	const setting = await settingService.query(c);
-	const domain = getDomains(setting)[0];
+	const domainList = getDomains(setting);
+	const domain = domainParam && domainList.includes(domainParam) ? domainParam : domainList[0];
 	const email = await assignEmail(c, giteaUsername, domain);
 
 	return c.json(result.ok({ email }));
@@ -93,9 +97,11 @@ app.post('/gitea/assign', async (c) => {
 //一键批量指派：对所有未统一的 Gitea 用户执行 assign，返回逐个结果
 app.post('/gitea/assignAll', async (c) => {
 
-	const domain = getDomains(await settingService.query(c))[0];
+	const { domain: domainParam } = await c.req.json() || {};
+	const setting = await settingService.query(c);
+	const domainList = getDomains(setting);
+	const domain = domainParam && domainList.includes(domainParam) ? domainParam : domainList[0];
 	const giteaUsers = await giteaService.listUsers(c);
-	const domainList = getDomains(await settingService.query(c));
 
 	const targets = giteaUsers.filter(gitea =>
 		!domainList.some(d => gitea.email.endsWith('@' + d))
@@ -122,14 +128,15 @@ app.post('/gitea/assignAll', async (c) => {
 //给未匹配的 Sub2api 实名创建 Gitea 账号并分配邮箱
 app.post('/gitea/create', async (c) => {
 
-	const { fullName } = await c.req.json();
+	const { fullName, domain: domainParam } = await c.req.json();
 
 	if (!fullName) {
 		throw new BizError(t('emptyEmail'));
 	}
 
 	const setting = await settingService.query(c);
-	const domain = getDomains(setting)[0];
+	const domainList = getDomains(setting);
+	const domain = domainParam && domainList.includes(domainParam) ? domainParam : domainList[0];
 	const emailPrefix = await genEmailPrefix(c, fullName);
 	const email = emailPrefix + '@' + domain;
 
@@ -159,10 +166,11 @@ function getDomains(setting) {
 	return setting.domainList.map(item => item.substring(1));
 }
 
-//assign 主体：建 cloud-mail 账号 → 改 Gitea 邮箱，第二步失败时带上明确步骤信息
+//assign 主体：建 cloud-mail 账号 → 建/关联登录用户 → 改 Gitea 邮箱，失败带上明确步骤
 async function assignEmail(c, giteaUsername, domain) {
 	const email = giteaUsername + '@' + domain;
 	await createAccountIfMissing(c, email);
+	await ensureUserWithAccount(c, email);
 	try {
 		await giteaService.modifyUserEmail(c, giteaUsername, email);
 	} catch (e) {
@@ -171,6 +179,30 @@ async function assignEmail(c, giteaUsername, domain) {
 	}
 	auditLog(c, 'assign', giteaUsername, email);
 	return email;
+}
+
+//确保邮箱有可登录的用户：无主则建 user（密码随机废弃，登录走 Gitea OAuth）并绑定 account
+async function ensureUserWithAccount(c, email) {
+	const accountRow = await accountService.selectByEmailIncludeDel(c, email);
+
+	//已有主或不存在（不存在时 createAccountIfMissing 刚建过 userId=0）都按无主处理
+	if (!accountRow || accountRow.userId !== 0) {
+		return;
+	}
+
+	const userRow = await userService.selectByEmailIncludeDel(c, email);
+	if (userRow) {
+		//user 存在但 account 未关联（历史数据），补关联
+		await accountService.bindUser(c, email, userRow.userId);
+		return;
+	}
+
+	const roleRow = await roleService.selectDefaultRole(c);
+	const { salt, hash } = await cryptoUtils.hashPassword(cryptoUtils.genRandomPwd(24));
+	const userId = await userService.insert(c, { email, regKeyId: 0, password: hash, salt, type: roleRow.roleId });
+	await accountService.bindUser(c, email, userId);
+	await userService.updateUserInfo(c, userId, true);
+	auditLog(c, 'user.create', email, email);
 }
 
 //操作审计日志：进 Cloudflare Workers observability（结构化单行 JSON）

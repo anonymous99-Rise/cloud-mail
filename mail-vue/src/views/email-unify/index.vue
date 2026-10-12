@@ -11,6 +11,9 @@
         <el-option key="matched" :label="$t('matched')" value="matched"/>
         <el-option key="unmatched" :label="$t('unmatched')" value="unmatched"/>
       </el-select>
+      <el-select v-model="assignDomain" class="status-select" style="width: 160px">
+        <el-option v-for="d in domainOptions" :key="d" :label="$t('assignDomain') + ': ' + d" :value="d"/>
+      </el-select>
       <el-button class="assign-all-btn" size="small" type="warning" :loading="assignAllLoading"
                  @click="assignAll" v-perm="'gitea:set'">
         {{ $t('assignAll') }}
@@ -59,12 +62,14 @@ import {giteaAssign, giteaAssignAll, giteaCreate, giteaMatch} from '@/request/gi
 import {Icon} from "@iconify/vue";
 import loading from "@/components/loading/index.vue";
 import {useI18n} from 'vue-i18n';
+import {useSettingStore} from '@/store/setting.js';
 
 defineOptions({
   name: 'email-unify'
 })
 
 const {t} = useI18n();
+const settingStore = useSettingStore();
 const search = ref('')
 const filter = ref('all')
 const first = ref(true)
@@ -72,6 +77,10 @@ const tableLoading = ref(false)
 const assignLoading = ref('')
 const assignAllLoading = ref(false)
 const list = ref([])
+
+//分配域名选择：默认第一个域名（如 dfyx.click），可切 hopeless99.top 等仅发信域名
+const domainOptions = (settingStore.settings.domainList || []).map(d => d.replace(/^@/, ''))
+const assignDomain = ref(domainOptions[0] || '')
 
 const filteredList = computed(() => {
   return list.value.filter(row => {
@@ -117,7 +126,7 @@ function assign(row) {
   if (assignLoading.value) return
 
   assignLoading.value = row.giteaUsername
-  giteaAssign(row.giteaUsername).then(data => {
+  giteaAssign(row.giteaUsername, assignDomain.value).then(data => {
     row.giteaEmail = data.email
     row.unified = true
     ElMessage({
@@ -135,7 +144,7 @@ function create(row) {
   if (assignLoading.value) return
 
   assignLoading.value = row.fullName
-  giteaCreate(row.fullName).then(data => {
+  giteaCreate(row.fullName, assignDomain.value).then(data => {
     row.giteaUsername = data.email.split('@')[0]
     row.giteaEmail = data.email
     row.unified = true
@@ -159,7 +168,7 @@ function assignAll() {
       {type: 'warning'}
   ).then(() => {
     assignAllLoading.value = true
-    giteaAssignAll().then(data => {
+    giteaAssignAll(assignDomain.value).then(data => {
       ElMessage({
         message: t('assignAllDone', {total: data.total, fail: data.failCount}),
         type: data.failCount > 0 ? 'warning' : 'success',

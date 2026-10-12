@@ -67,6 +67,7 @@ const en = {
     assignEmail: 'Assign Email',
     createGitea: 'Create Gitea Account',
     assignAll: 'Assign All',
+    assignDomain: 'Domain',
     oauthLoggingIn: 'Signing in...',
     oauthBindEmail: 'Register Email',
     oauthBindHint: 'Please register an email to bind your account',
