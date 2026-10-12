@@ -79,22 +79,34 @@ jobs:
             fs.writeFileSync('mail-worker/package.json', JSON.stringify(p, null, '\t') + '\n');
           "
 
-          #生成简短更新说明（上次 tag 以来的 commit 标题），用 node 处理避免 shell 引号问题
+          #生成更新说明（What's Changed 风格：commit 列表 + Full Changelog 对比链接）
+          REPO_URL="https://github.com/${GITHUB_REPOSITORY}"
           PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           RANGE="${PREV_TAG:+${PREV_TAG}..}HEAD"
-          git log ${RANGE} --pretty=format:'- %s' | grep -v '^release:' | head -30 > /tmp/notes.txt || true
+
+          {
+            echo "## What's Changed"
+            echo ""
+            if [ -n "$PREV_TAG" ]; then
+              echo "<sub>${PREV_TAG} → ${TAG}</sub>"
+              echo ""
+            fi
+            #commit 标题 + 作者署名（如 "- feat: xxx by @someone"）
+            git log ${RANGE} --pretty=format:'- %s by @%an' | sed 's/ by @github-actions\[bot\] by @github-actions\[bot\]/ by @github-actions[bot]/' | grep -v 'release:' | head -30 || true
+            echo ""
+            echo ""
+            if [ -n "$PREV_TAG" ]; then
+              echo "**Full Changelog**: ${REPO_URL}/compare/${PREV_TAG}...${TAG}"
+            else
+              echo "**Full Changelog**: ${REPO_URL}/commits/${TAG}"
+            fi
+          } > /tmp/notes.txt
 
           git add mail-worker/package.json
           git commit -m "release: v${NEW_VERSION} [skip ci]"
           git tag "$TAG"
           git push origin main
           git push origin "$TAG"
-
-          {
-            echo 'notes<<EOF'
-            cat /tmp/notes.txt
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
 
           echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
           echo "skipped=false" >> "$GITHUB_OUTPUT"
