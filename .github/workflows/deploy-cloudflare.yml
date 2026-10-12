@@ -32,6 +32,7 @@ jobs:
       SUB2API_ACCOUNT: ${{ secrets.SUB2API_ACCOUNT || vars.SUB2API_ACCOUNT || '' }}
       CLOUDFLARE_EMAIL: ${{ secrets.CF_EMAIL || vars.CF_EMAIL || false }}
       ANALYSIS_CACHE: ${{ secrets.ANALYSIS_CACHE || vars.ANALYSIS_CACHE || false }}
+      GITEA_MIRROR_TOKEN: ${{ secrets.GITEA_MIRROR_TOKEN || '' }}
 
 
     outputs:
@@ -270,6 +271,15 @@ jobs:
             echo "❌ Failed. HTTP: $HTTP_CODE, Response: $RESPONSE_BODY"
             exit 1
           fi
+
+      - name: 🔄 同步到 Gitea / Sync to Gitea
+        continue-on-error: true
+        run: |
+          if [ -z "$GITEA_MIRROR_TOKEN" ]; then
+            echo "⚠️ GITEA_MIRROR_TOKEN 未配置，跳过同步。请在 GitHub Secrets 添加 Gitea 的访问令牌。"
+            exit 0
+          fi
+          git push "https://zhangz:${GITEA_MIRROR_TOKEN}@git.nxwysoft.com/zhangz/cloud-mail.git" "HEAD:main"
 
       - name: 🗑️ 删除运行记录 / Delete workflow runs
         uses: GitRML/delete-workflow-runs@main
