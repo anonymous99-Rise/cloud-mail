@@ -3,6 +3,8 @@ import accountService from "./account-service";
 import userService from "./user-service";
 import roleService from "./role-service";
 import settingService from "./setting-service";
+import emailService from "./email-service";
+import accountNoticeTemplate from "../template/account-notice";
 import account from "../entity/account";
 import orm from "../entity/orm";
 import { oauth } from "../entity/oauth";
@@ -161,7 +163,7 @@ const unifyService = {
 	//JIT 供给：登录入口（Sub2api/钉钉）用户在 Hope Mail 首次登录时
 	//自动补齐 Gitea 身份 → 统一邮箱 → 登录用户，返回 userRow（失败/无法确定返回 null）
 	//JIT 是增强流程：任何异常都降级返回 null，绝不阻塞用户登录
-	async jitProvision(c, oauthRow, { realName, preferredUsername }) {
+	async jitProvision(c, oauthRow, { realName, preferredUsername, noticeEmail }) {
 
 		const name = (realName || '').trim();
 		if (!name) {
@@ -169,14 +171,14 @@ const unifyService = {
 		}
 
 		try {
-			return await this.doJitProvision(c, oauthRow, name, preferredUsername);
+			return await this.doJitProvision(c, oauthRow, name, preferredUsername, noticeEmail);
 		} catch (e) {
 			this.auditLog(c, 'jit.fail', name, '', e.message);
 			return null;
 		}
 	},
 
-	async doJitProvision(c, oauthRow, name, preferredUsername) {
+	async doJitProvision(c, oauthRow, name, preferredUsername, noticeEmail) {
 
 		const setting = await settingService.query(c);
 		const domainList = this.getDomains(setting);
@@ -222,6 +224,22 @@ const unifyService = {
 		if (userRow) {
 			await this.bindOauth(c, oauthRow.oauthUserId, userRow.userId);
 			this.auditLog(c, 'jit.done', name, mailboxEmail);
+
+			//4. 开通通知：发到用户登录邮箱（如 Sub2api 邮箱），发件域名 = 分配域名
+			const noticeTo = noticeEmail || mailboxEmail;
+			const senderDomain = mailboxEmail.split('@')[1];
+			const { title, giteaDomain } = setting;
+			await emailService.sendSystemMail(c, {
+				to: noticeTo,
+				senderDomain,
+				subject: `【${title || 'Hope Mail'}】您的账号已开通`,
+				html: accountNoticeTemplate({
+					giteaUsername: giteaUser.username,
+					mailbox: mailboxEmail,
+					giteaUrl: giteaDomain || '',
+					title: title || 'Hope Mail'
+				})
+			});
 		}
 
 		return userRow;

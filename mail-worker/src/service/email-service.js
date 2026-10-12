@@ -484,6 +484,56 @@ const emailService = {
 		return [ emailResult ];
 	},
 
+	//系统通知邮件：不查用户权限/配额、不写库、失败不抛（best-effort）
+	//发件通道与身份跟随 senderDomain：命中 smtp_domains 走 SMTP(企业邮发件人)，
+	//否则走 Resend/CF 并用 noreply@senderDomain；用于账号开通通知等系统消息
+	async sendSystemMail(c, { to, subject, html, text, senderDomain, fromName = 'Hope Mail' }) {
+
+		try {
+			if (!to) {
+				return false;
+			}
+
+			const { resendTokens, smtpDomains, smtpHost, smtpUser, smtpPass, smtpFrom } = await settingService.query(c);
+			const smtpList = (smtpDomains || '').split(',').map(d => d.trim().toLowerCase()).filter(Boolean);
+			const sender = (senderDomain || '').toLowerCase();
+			const useSmtp = !!(smtpHost && smtpUser && smtpPass && smtpFrom) && smtpList.includes(sender);
+
+			const params = {
+				name: fromName,
+				accountEmail: useSmtp ? smtpFrom : ('noreply@' + sender),
+				receiveEmail: [to],
+				subject,
+				html,
+				text,
+				attachments: []
+			};
+
+			if (useSmtp) {
+				await this.sendBySmtp(c, params);
+				return true;
+			}
+
+			if (c.env.email) {
+				await this.sendByCloudflareEmail(c, params);
+				return true;
+			}
+
+			const domain = emailUtils.getDomain(to);
+			const resendToken = resendTokens[domain] || resendTokens[sender];
+			if (resendToken) {
+				await this.sendByResend(resendToken, params);
+				return true;
+			}
+
+			console.warn(`系统邮件无可用发信通道: ${to}`);
+			return false;
+		} catch (e) {
+			console.error(`系统邮件发送失败: ${e.message}`);
+			return false;
+		}
+	},
+
 	async sendByCloudflareEmail(c, params) {
 		const sendForm = {
 			from: { email: params.accountEmail, name: params.name },
