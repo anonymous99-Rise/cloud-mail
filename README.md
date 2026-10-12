@@ -144,7 +144,7 @@ pnpm release 3.6.0    # 显式指定版本号
 
 - **版本**：[Releases](https://github.com/anonymous99-Rise/cloud-mail/releases)
 - **GitHub**：https://github.com/anonymous99-Rise/cloud-mail
-- **Gitea**：https://git.nxwysoft.com/zhangz/cloud-mail
+- **Gitea**：https://git.nxwysoft.com
 
 ## 许可证
 
