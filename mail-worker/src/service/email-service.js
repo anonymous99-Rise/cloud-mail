@@ -340,9 +340,11 @@ const emailService = {
 		const domain = emailUtils.getDomain(accountRow.email);
 		const resendToken = resendTokens[domain];
 		const useCloudflareEmail = !!c.env.email;
+		const { smtpHost, smtpUser, smtpPass, smtpFrom } = await settingService.query(c);
+		const useSmtp = !!(smtpHost && smtpUser && smtpPass && smtpFrom);
 
 		//如果接收方存在站外邮箱，又没有发信服务
-		if (!useCloudflareEmail && !resendToken && !allInternal) {
+		if (!useCloudflareEmail && !resendToken && !useSmtp && !allInternal) {
 			throw new BizError(t('noSendProvider'));
 		}
 
@@ -367,34 +369,30 @@ const emailService = {
 		}
 
 		let sendResult = {};
+		let smtpSent = false;
 
-		//存在站外邮箱时，如果配置了 Cloudflare Email Service 就优先使用，否则使用 Resend
+		//发信通道优先级：SMTP（如腾讯企业邮）> Cloudflare Email > Resend
 		if (!allInternal) {
 
-			if (useCloudflareEmail) {
-				sendResult = await this.sendByCloudflareEmail(c, {
-					name,
-					accountEmail: accountRow.email,
-					receiveEmail,
-					subject,
-					text,
-					html,
-					attachments: [...imageDataList, ...attachments],
-					sendType,
-					messageId: emailRow.messageId
-				});
+			const sendParams = {
+				name,
+				accountEmail: accountRow.email,
+				receiveEmail,
+				subject,
+				text,
+				html,
+				attachments: [...imageDataList, ...attachments],
+				sendType,
+				messageId: emailRow.messageId
+			};
+
+			if (useSmtp) {
+				sendResult = await this.sendBySmtp(c, sendParams);
+				smtpSent = true;
+			} else if (useCloudflareEmail) {
+				sendResult = await this.sendByCloudflareEmail(c, sendParams);
 			} else {
-				sendResult = await this.sendByResend(resendToken, {
-					name,
-					accountEmail: accountRow.email,
-					receiveEmail,
-					subject,
-					text,
-					html,
-					attachments: [...imageDataList, ...attachments],
-					sendType,
-					messageId: emailRow.messageId
-				});
+				sendResult = await this.sendByResend(resendToken, sendParams);
 			}
 
 		}
@@ -419,7 +417,7 @@ const emailService = {
 		emailData.content = html;
 		emailData.text = text;
 		emailData.accountId = accountId;
-		emailData.status = useCloudflareEmail ? emailConst.status.DELIVERED : emailConst.status.SENT;
+		emailData.status = smtpSent ? emailConst.status.SENT : (useCloudflareEmail ? emailConst.status.DELIVERED : emailConst.status.SENT);
 		emailData.type = emailConst.type.SEND;
 		emailData.userId = userId;
 		emailData.resendEmailId = data?.id;
@@ -539,6 +537,216 @@ const emailService = {
 		}
 
 		return await resend.emails.send(sendForm);
+	},
+
+	//SMTP 发信通道（如腾讯企业邮）：Workers connect() 出站 + 隐式 TLS(465) + MIME 组包
+	async sendBySmtp(c, params) {
+
+		const { smtpHost, smtpPort, smtpUser, smtpPass, smtpFrom } = await settingService.query(c);
+
+		const port = Number(smtpPort) || 465;
+		//465 = 隐式 TLS（连接即握手）；587 = 明文连入后 STARTTLS 升级
+		const implicitTls = port === 465;
+
+		const { connect } = await import('cloudflare:sockets');
+		const socket = connect(
+			{ hostname: smtpHost, port },
+			{ secureTransport: implicitTls ? 'on' : 'startTLS', allowHostnameMismatch: true }
+		);
+
+		const reader = socket.readable.getReader();
+		const writer = socket.writable.getWriter();
+		const encoder = new TextEncoder();
+
+		//读完整 SMTP 响应（多行 "ddd-text" 以 "ddd text" 结尾）
+		let buf = '';
+		async function readSmtp() {
+			while (true) {
+				const m = buf.match(/(?:^|\r\n)(\d{3})([ -])([^\r\n]*)\r\n/);
+				if (m && m[2] === ' ') {
+					const full = buf.slice(0, m.index + m[0].length);
+					buf = buf.slice(m.index + m[0].length);
+					return full;
+				}
+				const { value, done } = await reader.read();
+				if (done) {
+					const rest = buf;
+					buf = '';
+					return rest;
+				}
+				buf += decoder.decode(value, { stream: true });
+			}
+		}
+
+		async function send(cmd) {
+			await writer.write(encoder.encode(cmd + '\r\n'));
+		}
+
+		//发送命令并校验响应前缀
+		async function cmd(step, line, expect) {
+			await send(line);
+			const resp = await readSmtp();
+			if (!resp.startsWith(expect)) {
+				throw new BizError(`SMTP ${step}: ${resp.trim().slice(0, 200)}`);
+			}
+			return resp;
+		}
+
+		const decoder = new TextDecoder();
+
+		try {
+			const banner = await readSmtp();
+			if (!banner.startsWith('220')) {
+				throw new BizError('SMTP banner: ' + banner.trim().slice(0, 200));
+			}
+
+			if (!implicitTls) {
+				await cmd('starttls', 'STARTTLS', '220');
+			}
+
+			await cmd('ehlo', 'EHLO hopemail.smtp', '250');
+			await cmd('auth-1', 'AUTH LOGIN', '334');
+			await cmd('auth-2', b64(smtpUser), '334');
+			await cmd('auth-3', b64(smtpPass), '235');
+			await cmd('mail-from', `MAIL FROM:<${smtpFrom}>`, '250');
+
+			for (const to of params.receiveEmail) {
+				await cmd('rcpt ' + to, `RCPT TO:<${to}>`, '250');
+			}
+
+			await cmd('data', 'DATA', '354');
+
+			const mime = await this.buildMime(c, params, smtpFrom);
+			//SMTP DATA：点填充（防止正文里独立 "." 提前结束）再发终止点
+			const dotStuffed = mime.replace(/(^|\r\n)\./g, '$1..');
+			await writer.write(encoder.encode(dotStuffed + '\r\n.\r\n'));
+			const resp = await readSmtp();
+			if (!resp.startsWith('250')) {
+				throw new BizError('SMTP send: ' + resp.trim().slice(0, 200));
+			}
+
+			await send('QUIT');
+			try { await reader.cancel(); } catch (e) { }
+
+			return { data: { id: 'smtp-' + Date.now().toString(36) }, error: null };
+		} catch (e) {
+			try { await reader.cancel(); } catch (e2) { }
+			if (e instanceof BizError) throw e;
+			throw new BizError('SMTP: ' + e.message);
+		}
+
+		function b64(s) {
+			let bin = '';
+			new TextEncoder().encode(s).forEach(b => { bin += String.fromCharCode(b); });
+			return btoa(bin);
+		}
+	},
+
+	//组装 MIME 邮件（文本/HTML/附件/inReplyTo）
+	async buildMime(c, params, smtpFrom) {
+
+		const boundary = 'hopemail_' + Date.now().toString(36);
+		const headers = [];
+
+		headers.push(`From: ${params.name} <${smtpFrom}>`);
+		headers.push(`To: ${[...params.receiveEmail].map(t => `<${t}>`).join(', ')}`);
+		headers.push(`Subject: ${this.mimeEncode(params.subject || '')}`);
+		headers.push('MIME-Version: 1.0');
+		headers.push('Date: ' + new Date().toUTCString());
+		headers.push('Message-ID: <' + Date.now().toString(36) + '.' + Math.floor(Math.random() * 1e8) + '@hopemail.smtp>');
+
+		if (params.sendType === 'reply' && params.messageId) {
+			headers.push(`In-Reply-To: ${params.messageId}`);
+			headers.push(`References: ${params.messageId}`);
+		}
+
+		const attachments = await this.toAttachmentBase64List(params.attachments);
+		const hasAtt = attachments.length > 0;
+		const hasTextAndHtml = params.text && params.html;
+
+		if (hasAtt) {
+			headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+		} else if (hasTextAndHtml) {
+			headers.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
+		} else if (params.html) {
+			headers.push('Content-Type: text/html; charset=utf-8');
+			headers.push('Content-Transfer-Encoding: 8bit');
+		} else {
+			headers.push('Content-Type: text/plain; charset=utf-8');
+			headers.push('Content-Transfer-Encoding: 8bit');
+		}
+
+		let body = headers.join('\r\n') + '\r\n\r\n';
+
+		const textPart = params.text
+			? `--${boundary}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n${params.text}\r\n`
+			: '';
+		const htmlPart = params.html
+			? `--${boundary}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n${params.html}\r\n`
+			: '';
+
+		if (hasAtt) {
+			//mixed 内层再套 alternative
+			const innerBoundary = boundary + '_alt';
+			body += `--${boundary}\r\nContent-Type: multipart/alternative; boundary="${innerBoundary}"\r\n\r\n`;
+			if (textPart) {
+				body += `--${innerBoundary}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n${params.text}\r\n`;
+			}
+			if (htmlPart) {
+				body += `--${innerBoundary}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n${params.html}\r\n`;
+			}
+			body += `--${innerBoundary}--\r\n`;
+
+			for (const att of attachments) {
+				const disposition = att.contentId ? `inline; filename="${att.filename || 'file'}"` : `attachment; filename="${att.filename || 'file'}"`;
+				body += `--${boundary}\r\n`
+					+ `Content-Type: ${att.contentType}; name="${att.filename || 'file'}"\r\n`
+					+ `Content-Transfer-Encoding: base64\r\n`
+					+ `Content-Disposition: ${disposition}\r\n`
+					+ (att.contentId ? `Content-ID: <${att.contentId}>\r\n` : '')
+					+ `\r\n`
+					+ att.content.replace(/(.{76})/g, '$1\r\n') + '\r\n';
+			}
+			body += `--${boundary}--\r\n`;
+		} else if (hasTextAndHtml) {
+			body += textPart + htmlPart + `--${boundary}--\r\n`;
+		} else {
+			//单部分：body 直接是正文
+			body += params.html || params.text || '';
+		}
+
+		return body;
+	},
+
+	async toAttachmentBase64List(attachments = []) {
+		const result = [];
+
+		for (const attachment of attachments) {
+			const content = await this.toAttachmentBase64(attachment);
+			if (!content) {
+				continue;
+			}
+
+			result.push({
+				filename: attachment.filename || attachment.name || 'file',
+				contentType: attachment.contentType || attachment.mimeType || attachment.type || 'application/octet-stream',
+				contentId: attachment.contentId ? attachment.contentId.replace(/^<|>$/g, '') : null,
+				content
+			});
+		}
+
+		return result;
+	},
+
+	//MIME 标头编码（中文主题）：=?utf-8?B?...?=
+	mimeEncode(s) {
+		if (/^[\x20-\x7e]*$/.test(s)) {
+			return s;
+		}
+		const bytes = new TextEncoder().encode(s);
+		let b64 = '';
+		bytes.forEach(b => { b64 += String.fromCharCode(b); });
+		return '=?utf-8?B?' + btoa(b64) + '?=';
 	},
 
 	async toCloudflareAttachments(attachments) {

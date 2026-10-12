@@ -78,6 +78,11 @@ export const setting = sqliteTable('setting', {
 	giteaAdminToken: text('gitea_admin_token').default('').notNull(),
 	sub2apiUrl: text('sub2api_url').default('').notNull(),
 	sub2apiAccount: text('sub2api_account').default('').notNull(),
-	resendWebhookSecret: text('resend_webhook_secret').default('').notNull()
+	resendWebhookSecret: text('resend_webhook_secret').default('').notNull(),
+	smtpHost: text('smtp_host').default('').notNull(),
+	smtpPort: integer('smtp_port').default(465).notNull(),
+	smtpUser: text('smtp_user').default('').notNull(),
+	smtpPass: text('smtp_pass').default('').notNull(),
+	smtpFrom: text('smtp_from').default('').notNull()
 });
 export default setting

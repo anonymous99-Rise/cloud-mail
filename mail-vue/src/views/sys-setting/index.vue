@@ -205,6 +205,20 @@
                 </div>
               </div>
               <div class="setting-item">
+                <div>
+                  <span>{{ $t('smtpSending') }}</span>
+                  <el-tooltip effect="dark" :content="$t('smtpSendingDesc')">
+                    <Icon class="warning" icon="fe:warning" width="18" height="18"/>
+                  </el-tooltip>
+                </div>
+                <div class="forward">
+                  <span>{{ setting.smtpHost && setting.smtpUser ? $t('configured') : $t('notConfigured') }}</span>
+                  <el-button class="opt-button" size="small" type="primary" @click="openSmtpSetting">
+                    <Icon icon="fluent:settings-48-regular" width="18" height="18"/>
+                  </el-button>
+                </div>
+              </div>
+              <div class="setting-item">
                 <div><span>{{ $t('blackList') }}</span></div>
                 <div>
                   <el-button class="opt-button" style="margin-top: 0" @click="openBlackListForm" size="small"
@@ -561,6 +575,22 @@
         <template #footer>
           <div class="dialog-footer">
             <el-button type="primary" :loading="settingLoading" @click="saveGiteaAdmin">{{ $t('save') }}</el-button>
+          </div>
+        </template>
+      </el-dialog>
+
+      <el-dialog v-model="smtpShow" :title="'SMTP - ' + $t('setting')" width="340">
+        <div class="dialog-content">
+          <el-input type="text" placeholder="smtp.exmail.qq.com" v-model="smtpForm.host"/>
+          <el-input-number style="margin-top: 15px" :min="1" :max="65535" controls-position="right"
+                           :placeholder="$t('smtpPort')" v-model="smtpForm.port"/>
+          <el-input type="text" style="margin-top: 15px" placeholder="noreply@example.com" v-model="smtpForm.user"/>
+          <el-input type="password" style="margin-top: 15px" :placeholder="$t('smtpPass')" v-model="smtpForm.pass"/>
+          <el-input type="text" style="margin-top: 15px" placeholder="noreply@example.com" v-model="smtpForm.from"/>
+        </div>
+        <template #footer>
+          <div class="dialog-footer">
+            <el-button type="primary" :loading="settingLoading" @click="saveSmtp">{{ $t('save') }}</el-button>
           </div>
         </template>
       </el-dialog>
@@ -1067,6 +1097,15 @@ const sub2apiForm = reactive({
   url: '',
   email: '',
   password: ''
+})
+
+const smtpShow = ref(false)
+const smtpForm = reactive({
+  host: '',
+  port: 465,
+  user: '',
+  pass: '',
+  from: ''
 })
 
 const s3 = reactive({
@@ -1644,6 +1683,29 @@ function saveGiteaAdmin() {
   //令牌留空表示不修改（get() 返回的是脱敏值）
   if (giteaAdminForm.token.trim()) {
     form.giteaAdminToken = giteaAdminForm.token.trim()
+  }
+  editSetting(form)
+}
+
+function openSmtpSetting() {
+  smtpForm.host = setting.value.smtpHost || ''
+  smtpForm.port = setting.value.smtpPort || 465
+  smtpForm.user = setting.value.smtpUser || ''
+  smtpForm.pass = ''
+  smtpForm.from = setting.value.smtpFrom || ''
+  smtpShow.value = true
+}
+
+function saveSmtp() {
+  const form = {
+    smtpHost: smtpForm.host.trim(),
+    smtpPort: smtpForm.port,
+    smtpUser: smtpForm.user.trim(),
+    smtpFrom: smtpForm.from.trim()
+  }
+  //密码留空表示不修改（get() 返回的是脱敏值）；全部留空表示清除 SMTP 配置
+  if (smtpForm.pass.trim()) {
+    form.smtpPass = smtpForm.pass.trim()
   }
   editSetting(form)
 }

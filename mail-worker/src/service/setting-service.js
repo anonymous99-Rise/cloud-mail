@@ -90,6 +90,7 @@ const settingService = {
 		settingRow.giteaAdminToken = settingRow.giteaAdminToken ? `${settingRow.giteaAdminToken.slice(0, 8)}******` : null;
 		settingRow.webhookSecret = settingRow.webhookSecret ? `${settingRow.webhookSecret.slice(0, 6)}******` : null;
 		settingRow.resendWebhookSecret = settingRow.resendWebhookSecret ? `${settingRow.resendWebhookSecret.slice(0, 10)}******` : null;
+		settingRow.smtpPass = settingRow.smtpPass ? `${settingRow.smtpPass.slice(0, 4)}******` : null;
 		if (settingRow.sub2apiAccount) {
 			try {
 				const account = JSON.parse(settingRow.sub2apiAccount);
@@ -141,7 +142,7 @@ const settingService = {
 		}
 
 		//get() 返回的是脱敏值（如 abcd1234******），整表回传时不能覆盖真实密钥
-		const secretKeys = ['giteaAdminToken', 's3AccessKey', 's3SecretKey', 'tgBotToken', 'secretKey', 'webhookSecret', 'resendWebhookSecret'];
+		const secretKeys = ['giteaAdminToken', 's3AccessKey', 's3SecretKey', 'tgBotToken', 'secretKey', 'webhookSecret', 'resendWebhookSecret', 'smtpPass'];
 		secretKeys.forEach(key => {
 			if (typeof params[key] === 'string' && params[key].endsWith('******')) {
 				delete params[key];
