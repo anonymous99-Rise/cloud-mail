@@ -6,6 +6,7 @@ on:
     paths:
       - "mail-worker/**"
       - "mail-vue/**"
+      - ".github/workflows/deploy-cloudflare.yml"
   workflow_dispatch:
 
 jobs:
@@ -42,6 +43,68 @@ jobs:
     steps:
       - name: 🚚 检出代码仓库 / Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🔖 自动迭代版本号 / Auto version bump
+        id: bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          VERSION=$(node -p "require('./mail-worker/package.json').version")
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          PATCH=$(echo "$VERSION" | cut -d. -f3)
+          NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+          TAG="v${NEW_VERSION}"
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "⚠️ $TAG 已存在，跳过 bump（可能为重跑）"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "🔖 $VERSION → $NEW_VERSION"
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('mail-worker/package.json', 'utf-8'));
+            p.version = '$NEW_VERSION';
+            fs.writeFileSync('mail-worker/package.json', JSON.stringify(p, null, '\t') + '\n');
+          "
+
+          #生成简短更新说明（上次 tag 以来的 commit 标题）
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          RANGE="${PREV_TAG:+${PREV_TAG}..}HEAD"
+          NOTES=$(git log ${RANGE} --pretty=format:'- %s' | grep -v '^release:' | head -30)
+          NOTES="${NOTES//'\''/\"}"
+
+          git add mail-worker/package.json
+          git commit -m "release: v${NEW_VERSION} [skip ci]"
+          git tag "$TAG"
+          git push origin main
+          git push origin "$TAG"
+
+          #写入 release notes 供 tag workflow 复用
+          {
+            echo 'notes<<EOF'
+            echo "$NOTES"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "skipped=false" >> "$GITHUB_OUTPUT"
+
+      - name: 🔄 同步版本号到 Gitea / Sync version to Gitea
+        if: steps.bump.outputs.skipped == 'false'
+        continue-on-error: true
+        run: |
+          if [ -n "$GITEA_MIRROR_TOKEN" ]; then
+            git push "https://zhangz:${GITEA_MIRROR_TOKEN}@git.nxwysoft.com/zhangz/cloud-mail.git" "HEAD:main" "refs/tags/v${{ steps.bump.outputs.version }}"
+          fi
 
       - name: ⚙ 设置 pnpm / Set up pnpm
         uses: pnpm/action-setup@v4.1.0
