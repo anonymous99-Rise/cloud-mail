@@ -484,9 +484,9 @@ const emailService = {
 		return [ emailResult ];
 	},
 
-	//系统通知邮件：不查用户权限/配额、不写库、失败不抛（best-effort）
-	//发件通道与身份跟随 senderDomain：命中 smtp_domains 走 SMTP(企业邮发件人)，
-	//否则走 Resend/CF 并用 noreply@senderDomain；用于账号开通通知等系统消息
+	//系统通知邮件：不查用户权限/配额、失败不抛（best-effort）
+	//收件人是站内邮箱（本平台域名）→ 直接入库到其账号，不经过任何外部通道；
+	//否则按 senderDomain 走外部通道（命中 smtp_domains 走 SMTP，否则 Resend/CF）
 	async sendSystemMail(c, { to, subject, html, text, senderDomain, fromName = 'Hope Mail' }) {
 
 		try {
@@ -494,14 +494,25 @@ const emailService = {
 				return false;
 			}
 
-			const { resendTokens, smtpDomains, smtpHost, smtpUser, smtpPass, smtpFrom } = await settingService.query(c);
-			const smtpList = (smtpDomains || '').split(',').map(d => d.trim().toLowerCase()).filter(Boolean);
+			const { resendTokens, smtpDomains, smtpHost, smtpUser, smtpPass, smtpFrom, domainList } = await settingService.query(c);
 			const sender = (senderDomain || '').toLowerCase();
-			const useSmtp = !!(smtpHost && smtpUser && smtpPass && smtpFrom) && smtpList.includes(sender);
+			const fromEmail = (smtpHost && smtpUser && smtpPass && smtpFrom && (smtpDomains || '').split(',').map(d => d.trim().toLowerCase()).includes(sender))
+				? smtpFrom
+				: ('noreply@' + sender);
 
+			//站内收件人：直接入库
+			const toDomain = '@' + emailUtils.getDomain(to).toLowerCase();
+			if (domainList.some(d => d.toLowerCase() === toDomain)) {
+				await this.deliverInternal(c, {
+					to, fromEmail, fromName, subject, html, text
+				});
+				return true;
+			}
+
+			//外部收件人：走外部通道
 			const params = {
 				name: fromName,
-				accountEmail: useSmtp ? smtpFrom : ('noreply@' + sender),
+				accountEmail: fromEmail,
 				receiveEmail: [to],
 				subject,
 				html,
@@ -509,7 +520,7 @@ const emailService = {
 				attachments: []
 			};
 
-			if (useSmtp) {
+			if (fromEmail === smtpFrom && smtpHost && smtpUser && smtpPass) {
 				await this.sendBySmtp(c, params);
 				return true;
 			}
@@ -519,8 +530,7 @@ const emailService = {
 				return true;
 			}
 
-			const domain = emailUtils.getDomain(to);
-			const resendToken = resendTokens[domain] || resendTokens[sender];
+			const resendToken = resendTokens[sender] || resendTokens[emailUtils.getDomain(to)];
 			if (resendToken) {
 				await this.sendByResend(resendToken, params);
 				return true;
@@ -532,6 +542,34 @@ const emailService = {
 			console.error(`系统邮件发送失败: ${e.message}`);
 			return false;
 		}
+	},
+
+	//站内直达投递：把邮件作为 RECEIVE 类型写入收件人账号（绕过外部收发）
+	async deliverInternal(c, { to, fromEmail, fromName, subject, html, text }) {
+
+		const accountRow = await accountService.selectByEmailIncludeDel(c, to);
+		if (!accountRow) {
+			console.warn(`站内投递失败，收件账号不存在: ${to}`);
+			return;
+		}
+
+		await orm(c).insert(email).values({
+			sendEmail: fromEmail,
+			name: fromName,
+			accountId: accountRow.accountId,
+			userId: accountRow.userId,
+			subject,
+			content: html,
+			text,
+			toEmail: to,
+			toName: accountRow.name || emailUtils.getName(to),
+			recipient: JSON.stringify([{ address: to, name: '' }]),
+			messageId: '<' + Date.now().toString(36) + '.' + Math.floor(Math.random() * 1e8) + '@system>',
+			type: emailConst.type.RECEIVE,
+			status: emailConst.status.RECEIVE,
+			isDel: isDel.NORMAL,
+			unread: emailConst.unread.UNREAD
+		}).run();
 	},
 
 	async sendByCloudflareEmail(c, params) {
