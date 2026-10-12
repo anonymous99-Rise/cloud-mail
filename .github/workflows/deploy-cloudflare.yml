@@ -9,6 +9,9 @@ on:
       - ".github/workflows/deploy-cloudflare.yml"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   Deploy-cloud-mail:
     name: 🏗️ Build and Deploy
@@ -341,6 +344,16 @@ jobs:
             exit 0
           fi
           git push "https://zhangz:${GITEA_MIRROR_TOKEN}@git.nxwysoft.com/zhangz/cloud-mail.git" "HEAD:main"
+
+      - name: 📦 创建 GitHub Release / Create GitHub Release
+        if: steps.bump.outputs.skipped == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ steps.bump.outputs.version }}" \
+            --title "v${{ steps.bump.outputs.version }}" \
+            --notes-file /tmp/notes.txt 2>/dev/null \
+            || echo "⚠️ Release 已存在或创建失败，跳过"
 
       - name: 🗑️ 删除运行记录 / Delete workflow runs
         uses: GitRML/delete-workflow-runs@main
