@@ -294,9 +294,7 @@ const oauthService = {
 					: (userInfo.name || userInfo.username);
 				userRow = await unifyService.jitProvision(c, oauthRow, {
 					realName,
-					preferredUsername: userInfo.preferredUsername || null,
-					//通知收件地址：优先登录邮箱，回退统一邮箱
-					noticeEmail: userInfo.loginEmail || null
+					preferredUsername: userInfo.preferredUsername || null
 				});
 			}
 		}
@@ -341,9 +339,7 @@ const oauthService = {
 			username: realName,
 			name: realName,
 			avatar: null,
-			platform: 'sub2api',
-			//登录用的真实邮箱：JIT 通知发到这里，用户能立刻收到
-			loginEmail: email.trim()
+			platform: 'sub2api'
 		};
 
 		return await this.saveAndLogin(c, userInfo);

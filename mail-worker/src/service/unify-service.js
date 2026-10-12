@@ -163,7 +163,7 @@ const unifyService = {
 	//JIT 供给：登录入口（Sub2api/钉钉）用户在 Hope Mail 首次登录时
 	//自动补齐 Gitea 身份 → 统一邮箱 → 登录用户，返回 userRow（失败/无法确定返回 null）
 	//JIT 是增强流程：任何异常都降级返回 null，绝不阻塞用户登录
-	async jitProvision(c, oauthRow, { realName, preferredUsername, noticeEmail }) {
+	async jitProvision(c, oauthRow, { realName, preferredUsername }) {
 
 		const name = (realName || '').trim();
 		if (!name) {
@@ -171,14 +171,14 @@ const unifyService = {
 		}
 
 		try {
-			return await this.doJitProvision(c, oauthRow, name, preferredUsername, noticeEmail);
+			return await this.doJitProvision(c, oauthRow, name, preferredUsername);
 		} catch (e) {
 			this.auditLog(c, 'jit.fail', name, '', e.message);
 			return null;
 		}
 	},
 
-	async doJitProvision(c, oauthRow, name, preferredUsername, noticeEmail) {
+	async doJitProvision(c, oauthRow, name, preferredUsername) {
 
 		const setting = await settingService.query(c);
 		const domainList = this.getDomains(setting);
@@ -225,12 +225,12 @@ const unifyService = {
 			await this.bindOauth(c, oauthRow.oauthUserId, userRow.userId);
 			this.auditLog(c, 'jit.done', name, mailboxEmail);
 
-			//4. 开通通知：发到用户登录邮箱（如 Sub2api 邮箱），发件域名 = 分配域名
-			const noticeTo = noticeEmail || mailboxEmail;
+			//4. 开通通知：发到统一邮箱本身（用户登录 Hope Mail 后即可在收件箱看到）
+			//发件域名跟随统一邮箱域名：dfyx.click 走 Resend(noreply@dfyx.click)，hopeless99.top 走企业邮
 			const senderDomain = mailboxEmail.split('@')[1];
 			const { title, giteaDomain } = setting;
 			await emailService.sendSystemMail(c, {
-				to: noticeTo,
+				to: mailboxEmail,
 				senderDomain,
 				subject: `【${title || 'Hope Mail'}】您的账号已开通`,
 				html: accountNoticeTemplate({
