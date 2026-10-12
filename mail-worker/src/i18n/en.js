@@ -65,6 +65,7 @@ const en = {
 	emptyBotToken: 'Please verify that you are human',
 	botVerifyFail: 'Bot verification failed, please try again',
 	authExpired: 'Authentication has expired. Please sign in again',
+	loginRateLimit: 'Too many failed login attempts. Please try again tomorrow',
 	unauthorized: 'Unauthorized',
 	bannedSend: 'You can only send emails to internal mailboxes',
 	onlyInternalSend: 'Your current role allows sending internal emails only',

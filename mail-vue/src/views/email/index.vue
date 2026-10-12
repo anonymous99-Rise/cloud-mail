@@ -29,7 +29,7 @@ import {useSettingStore} from "@/store/setting.js";
 import emailScroll from "@/components/email-scroll/index.vue"
 import {emailList, emailDelete, emailLatest, emailRead} from "@/request/email.js";
 import {starAdd, starCancel} from "@/request/star.js";
-import {defineOptions, h, onMounted, reactive, ref, watch} from "vue";
+import {defineOptions, h, onMounted, onUnmounted, reactive, ref, watch} from "vue";
 import {sleep} from "@/utils/time-utils.js";
 import router from "@/router/index.js";
 import {Icon} from "@iconify/vue";
@@ -48,9 +48,16 @@ const params = reactive({
   timeSort: 0,
 })
 
+let latestRunning = false
+
 onMounted(() => {
   emailStore.emailScroll = scroll;
   latest()
+})
+
+onUnmounted(() => {
+  //组件卸载（登出/路由销毁）时终止 while(true) 轮询，防止循环残留叠加
+  latestRunning = false
 })
 
 
@@ -75,7 +82,10 @@ function jumpContent(email) {
 const existIds = new Set();
 
 async function latest() {
-  while (true) {
+  if (latestRunning) return
+  latestRunning = true
+
+  while (latestRunning) {
 
     let autoRefresh = settingStore.settings.autoRefresh;
     await sleep(autoRefresh > 1 ? autoRefresh * 1000 : 3000);

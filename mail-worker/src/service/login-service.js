@@ -19,6 +19,9 @@ import dayjs from 'dayjs';
 import { toUtc } from '../utils/date-uitil';
 import { t } from '../i18n/i18n.js';
 import verifyRecordService from './verify-record-service';
+import orm from '../entity/orm';
+import user from '../entity/user';
+import { eq } from 'drizzle-orm';
 
 const loginService = {
 
@@ -221,14 +224,36 @@ const loginService = {
 			throw new BizError(t('isBanUser'));
 		}
 
-		if (!await cryptoUtils.verifyPassword(password, userRow.salt, userRow.password) && !noVerifyPwd) {
-			throw new BizError(t('IncorrectPwd'));
+		if (!noVerifyPwd) {
+			//登录限速：同 IP 累计失败 ≥10 次当日拒绝暴力破解
+			const failCount = await verifyRecordService.getLoginFailCount(c);
+			if (failCount >= 10) {
+				throw new BizError(t('loginRateLimit'), 429);
+			}
+
+			if (!await cryptoUtils.verifyPassword(password, userRow.salt, userRow.password)) {
+				await verifyRecordService.increaseLoginFailCount(c);
+				throw new BizError(t('IncorrectPwd'));
+			}
+		}
+
+		//存量 SHA-256 哈希在明文密码校验通过后透明升级为 PBKDF2
+		if (!noVerifyPwd && cryptoUtils.isLegacyHash(userRow.password)) {
+			try {
+				const { salt, hash } = await cryptoUtils.hashPassword(password);
+				await orm(c).update(user).set({ salt, password: hash }).where(eq(user.userId, userRow.userId)).run();
+			} catch (e) {
+				console.warn(`密码哈希升级失败: ${e.message}`);
+			}
 		}
 
 		const uuid = uuidv4();
-		const jwt = await JwtUtils.generateToken(c,{ userId: userRow.userId, token: uuid });
+		const jwt = await JwtUtils.generateToken(c, { userId: userRow.userId, token: uuid }, constant.TOKEN_EXPIRE);
 
 		let authInfo = await c.env.kv.get(KvConst.AUTH_INFO + userRow.userId, { type: 'json' });
+
+		//session 存储剥离密码哈希/盐，避免 KV 泄露即拖库
+		const { password: _pwd, salt: _salt, ...safeUser } = userRow;
 
 		if (authInfo && (authInfo.user.email === userRow.email)) {
 
@@ -237,12 +262,13 @@ const loginService = {
 			}
 
 			authInfo.tokens.push(uuid);
+			authInfo.user = safeUser;
 
 		} else {
 
 			authInfo = {
 				tokens: [],
-				user: userRow,
+				user: safeUser,
 				refreshTime: dayjs().toISOString()
 			};
 
@@ -257,11 +283,19 @@ const loginService = {
 	},
 
 	async logout(c, userId) {
-		const token =userContext.getToken(c);
+		const token = await userContext.getToken(c);
 		const authInfo = await c.env.kv.get(KvConst.AUTH_INFO + userId, { type: 'json' });
+
+		if (!authInfo) {
+			return
+		}
+
+		//只删当前 token：findIndex 未命中返回 -1，直接 splice(-1,1) 会误删最后一个合法 token
 		const index = authInfo.tokens.findIndex(item => item === token);
-		authInfo.tokens.splice(index, 1);
-		await c.env.kv.put(KvConst.AUTH_INFO + userId, JSON.stringify(authInfo));
+		if (index > -1) {
+			authInfo.tokens.splice(index, 1);
+		}
+		await c.env.kv.put(KvConst.AUTH_INFO + userId, JSON.stringify(authInfo), { expirationTtl: constant.TOKEN_EXPIRE });
 	}
 
 };

@@ -241,8 +241,19 @@ const emailService = {
 			.run();
 	},
 
-	receive(c, params, cidAttList, r2domain) {
+	async receive(c, params, cidAttList, r2domain) {
 		params.content = this.imgReplace(params.content, cidAttList, r2domain)
+
+		//幂等：同 messageId 已入库则直接返回原记录，防 Cloudflare 重投重复入库
+		if (params.messageId) {
+			const existing = await orm(c).select().from(email)
+				.where(and(eq(email.messageId, params.messageId), eq(email.accountId, params.accountId)))
+				.get();
+			if (existing) {
+				return existing;
+			}
+		}
+
 		return orm(c).insert(email).values({ ...params }).returning().get();
 	},
 
@@ -826,6 +837,8 @@ const emailService = {
 
 	async latest(c, params, userId) {
 		let { emailId, accountId, allReceive } = params;
+		//缺参兜底，避免 gt(emailId, undefined) 抛错
+		emailId = Number(emailId) || 0;
 		allReceive = Number(allReceive);
 
 		if (isNaN(allReceive)) {

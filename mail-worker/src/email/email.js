@@ -43,16 +43,8 @@ export async function email(message, env, ctx) {
 			return;
 		}
 
-		const reader = message.raw.getReader();
-		let content = '';
-
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			content += new TextDecoder().decode(value);
-		}
-
-		const email = await PostalMime.parse(content);
+		//postal-mime 直接接收流：TextDecoder 文本解码会损坏 8bit/binary 附件
+		const email = await PostalMime.parse(message.raw);
 
 
 		const blockFlag = checkBlock(blackSubject, blackContent, blackFrom, email);

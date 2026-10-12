@@ -75,7 +75,7 @@ const list = ref([])
 
 const filteredList = computed(() => {
   return list.value.filter(row => {
-    if (search.value && !row.fullName.includes(search.value) && !row.giteaUsername.includes(search.value)) {
+    if (search.value && !(row.fullName || '').includes(search.value) && !(row.giteaUsername || '').includes(search.value)) {
       return false
     }
     if (filter.value === 'unified') return row.unified

@@ -49,7 +49,8 @@ const telegramService = {
 
 		const tgChatIds = tgChatId.split(',');
 
-		const jwtToken = await jwtUtils.generateToken(c, { emailId: email.emailId })
+		//TG 预览链接 7 天过期，防止聊天导出/转发导致邮件内容永久可读
+		const jwtToken = await jwtUtils.generateToken(c, { emailId: email.emailId }, 60 * 60 * 24 * 7)
 
 		const webAppUrl = customDomain ? `${domainUtils.toOssDomain(customDomain)}/api/telegram/getEmail/${jwtToken}` : 'https://www.cloudflare.com/404'
 		const inlineKeyboard = [

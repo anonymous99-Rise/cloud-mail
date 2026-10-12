@@ -5,7 +5,7 @@ import {emailConst} from "../const/entity-const";
 const dbInit = {
 	async init(c) {
 
-		const secret = c.req.param('secret');
+		const secret = c.req.header('x-init-secret') || c.req.param('secret');
 
 		if (secret !== c.env.jwt_secret) {
 			return c.text('❌ JWT secret mismatch');
@@ -34,6 +34,7 @@ const dbInit = {
 		await this.v3_3DB(c);
 		await this.v3_4DB(c);
 		await this.v3_5DB(c);
+		await this.v3_6DB(c);
 		await settingService.refresh(c);
 		return c.text('success');
 	},
@@ -83,6 +84,16 @@ const dbInit = {
 				c.env.db.prepare(`ALTER TABLE setting ADD COLUMN gitea_admin_token TEXT NOT NULL DEFAULT '';`),
 				c.env.db.prepare(`ALTER TABLE setting ADD COLUMN sub2api_url TEXT NOT NULL DEFAULT '';`),
 				c.env.db.prepare(`ALTER TABLE setting ADD COLUMN sub2api_account TEXT NOT NULL DEFAULT '';`)
+			]);
+		} catch (e) {
+			console.warn(`跳过字段：${e.message}`);
+		}
+	},
+
+	async v3_6DB(c) {
+		try {
+			await c.env.db.batch([
+				c.env.db.prepare(`ALTER TABLE setting ADD COLUMN resend_webhook_secret TEXT NOT NULL DEFAULT '';`)
 			]);
 		} catch (e) {
 			console.warn(`跳过字段：${e.message}`);

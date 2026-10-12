@@ -14,6 +14,7 @@ import { isDel, roleConst } from '../const/entity-const';
 import email from '../entity/email';
 import userService from './user-service';
 import KvConst from '../const/kv-const';
+import constant from '../const/constant';
 
 const publicService = {
 
@@ -45,6 +46,11 @@ const publicService = {
 
 		size = Number(size);
 		num = Number(num);
+
+		//公开接口分页上限，防止 size=100000 全量拖库
+		if (!Number.isFinite(size) || size < 1) size = 20;
+		if (size > 50) size = 50;
+		if (!Number.isFinite(num) || num < 1) num = 1;
 
 		num = (num - 1) * size;
 
@@ -135,14 +141,15 @@ const publicService = {
 				type = roleRow ? roleRow.roleId : type;
 			}
 
+			//参数化绑定，email/UA/IP 均为外部输入不可拼 SQL
 			const userSql = `INSERT INTO user (email, password, salt, type, os, browser, active_ip, create_ip, device, active_time, create_time)
-			VALUES ('${email}', '${hash}', '${salt}', '${type}', '${os}', '${browser}', '${activeIp}', '${activeIp}', '${device}', '${activeTime}', '${activeTime}')`
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 			const accountSql = `INSERT INTO account (email, name, user_id)
-			VALUES ('${email}', '${emailUtils.getName(email)}', 0);`;
+			VALUES (?, ?, 0);`;
 
-			userList.push(c.env.db.prepare(userSql));
-			userList.push(c.env.db.prepare(accountSql));
+			userList.push(c.env.db.prepare(userSql).bind(email, hash, salt, type, os, browser, activeIp, activeIp, device, activeTime, activeTime));
+			userList.push(c.env.db.prepare(accountSql).bind(email, emailUtils.getName(email)));
 
 		}
 
@@ -166,7 +173,7 @@ const publicService = {
 
 		const uuid = uuidv4();
 
-		await c.env.kv.put(KvConst.PUBLIC_KEY, uuid);
+		await c.env.kv.put(KvConst.PUBLIC_KEY, uuid, { expirationTtl: constant.TOKEN_EXPIRE });
 
 		return {token: uuid}
 	},

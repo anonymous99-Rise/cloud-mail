@@ -6,6 +6,7 @@
 
 <script setup>
 import { ref, onMounted, watch } from 'vue'
+import DOMPurify from 'dompurify'
 
 const props = defineProps({
   html: {
@@ -18,16 +19,25 @@ const container = ref(null)
 const contentBox = ref(null)
 let shadowRoot = null
 
+//邮件 HTML 消毒：禁 script/事件处理器/javascript: 协议，保留样式与图片
+function sanitizeHtml(html) {
+  return DOMPurify.sanitize(html, {
+    FORBID_TAGS: ['style'],
+    FORBID_ATTR: ['style'],
+    ADD_ATTR: ['target'],
+  })
+}
+
 function updateContent() {
   if (!shadowRoot) return;
 
   // 1. 提取 <body> 的 style 属性（如果存在）
   const bodyStyleRegex = /<body[^>]*style="([^"]*)"[^>]*>/i;
   const bodyStyleMatch = props.html.match(bodyStyleRegex);
-  const bodyStyle = bodyStyleMatch ? bodyStyleMatch[1] : '';
+  const bodyStyle = bodyStyleMatch ? DOMPurify.sanitize(bodyStyleMatch[1], {USE_PROFILES: {html: false}}).replace(/["'<>]/g, '') : '';
 
   // 2. 移除 <body> 标签（保留内容）
-  const cleanedHtml = props.html.replace(/<\/?body[^>]*>/gi, '');
+  const cleanedHtml = sanitizeHtml(props.html.replace(/<\/?body[^>]*>/gi, ''));
 
   // 3. 将 body 的 style 应用到 .shadow-content
   shadowRoot.innerHTML = `

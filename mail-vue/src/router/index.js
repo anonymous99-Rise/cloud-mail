@@ -125,21 +125,27 @@ function loadBackground(next) {
 
         const src = cvtR2Url(settingStore.settings.background);
 
+        //onload/onerror/超时三方竞速，只放行一次
+        let called = false
+        const onceNext = () => {
+            if (called) return
+            called = true
+            next()
+        }
+
         const img = new Image();
         img.src = src;
 
-        img.onload = () => {
-            next()
-        };
+        img.onload = onceNext;
 
         img.onerror = () => {
             console.warn("背景图片加载失败:", img.src);
-            next()
+            onceNext()
         };
 
         setTimeout(() => {
             console.warn("背景加载超时，已放行");
-            next()
+            onceNext()
         }, 3000)
 
     } else {

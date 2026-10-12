@@ -29,7 +29,7 @@ id = "2io01d4b299e481b9de060ece9e7785c"
 binding = "assets"
 directory = "./dist"
 not_found_handling = "single-page-application"
-run_worker_first = true
+run_worker_first = ["/api/*", "/static/*", "/attachments/*", "/webhooks", "/telegram/*", "/init/*"]
 
 #[[send_email]]
 #name = "email"
@@ -41,4 +41,4 @@ analysis_cache = false
 orm_log = true
 domain = ["example.com", "example2.com", "example3.com", "example4.com"]
 admin = "admin@example.com"
-jwt_secret = "b7f29a1d-18e2-4d3b-941f-f6b2c97c02fd"
+jwt_secret = "176c5ddc-3f04-47a1-b206-5f0dfb98e31a"

@@ -77,6 +77,7 @@ export const setting = sqliteTable('setting', {
 	dingtalkSwitch: integer('dingtalk_switch').default(1).notNull(),
 	giteaAdminToken: text('gitea_admin_token').default('').notNull(),
 	sub2apiUrl: text('sub2api_url').default('').notNull(),
-	sub2apiAccount: text('sub2api_account').default('').notNull()
+	sub2apiAccount: text('sub2api_account').default('').notNull(),
+	resendWebhookSecret: text('resend_webhook_secret').default('').notNull()
 });
 export default setting

@@ -1,5 +1,5 @@
 <template>
-  <div id="login-box" :style=" background ? 'background: var(--el-bg-color)' : ''" v-loading="oauthLoading" element-loading-text="登录中...">
+  <div id="login-box" :style=" background ? 'background: var(--el-bg-color)' : ''" v-loading="oauthLoading" :element-loading-text="$t('oauthLoggingIn')">
     <div id="background-wrap" v-if="!settingStore.settings.background">
       <div class="x1 cloud"></div>
       <div class="x2 cloud"></div>
@@ -110,7 +110,7 @@
         </template>
       </div>
     </div>
-    <el-dialog class="bind-dialog" v-model="showBindForm"  title="注册邮箱" >
+    <el-dialog class="bind-dialog" v-model="showBindForm"  :title="$t('oauthBindEmail')" >
       <div class="bind-container">
         <el-input :class="!hideLoginDomain ? 'email-input' : ''" v-model="bindForm.email" type="text" :placeholder="$t('emailAccount')" autocomplete="off" @keyup.enter="bind">
           <template #append v-if="!hideLoginDomain">
@@ -185,7 +185,14 @@ const oauthKeys = ['linuxdo', 'github', 'google', 'gitea', 'dingtalk']
 
 const oauthProvider = computed(() => {
   const fromState = route.query.state
-  if (oauthKeys.includes(fromState)) return fromState
+  //回调 state 形如 "provider.nonce"，先校验与 sessionStorage 中发起时保存的一致（CSRF），再取 provider
+  if (fromState && typeof fromState === 'string' && fromState.includes('.')) {
+    const stateProvider = fromState.split('.')[0]
+    if (oauthKeys.includes(stateProvider) && sessionStorage.getItem('oauthState') === fromState) {
+      return stateProvider
+    }
+    return null
+  }
   const fromStore = sessionStorage.getItem('oauthProvider')
   return oauthKeys.includes(fromStore) ? fromStore : null
 })
@@ -291,13 +298,17 @@ function oauthLogin(provider) {
   const clientId = settingStore.settings[provider + 'ClientId']
   const redirectUri = encodeURIComponent(window.location.origin + '/login')
   const giteaDomain = (settingStore.settings.giteaDomain || '').replace(/\/$/, '')
+  //CSRF 防护：随机 state 存 sessionStorage，回调时校验一致（state 仍编码 provider 供路由识别）
+  const nonce = Array.from(crypto.getRandomValues(new Uint8Array(12))).map(b => b.toString(16).padStart(2, '0')).join('')
+  const state = `${provider}.${nonce}`
   sessionStorage.setItem('oauthProvider', provider)
+  sessionStorage.setItem('oauthState', state)
   const authorizeUrls = {
-    linuxdo: `https://connect.linux.do/oauth2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=openid+profile+email&state=${provider}`,
-    github: `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=user:email&state=${provider}`,
-    google: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=openid+profile+email&state=${provider}`,
-    gitea: `${giteaDomain}/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&state=${provider}`,
-    dingtalk: `https://login.dingtalk.com/oauth2/auth?appid=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=openid&state=${provider}`,
+    linuxdo: `https://connect.linux.do/oauth2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=openid+profile+email&state=${encodeURIComponent(state)}`,
+    github: `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=user:email&state=${encodeURIComponent(state)}`,
+    google: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=openid+profile+email&state=${encodeURIComponent(state)}`,
+    gitea: `${giteaDomain}/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&state=${encodeURIComponent(state)}`,
+    dingtalk: `https://login.dingtalk.com/oauth2/auth?appid=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=openid&state=${encodeURIComponent(state)}`,
   }
   window.location.href = authorizeUrls[provider]
 }
@@ -321,6 +332,7 @@ async function oauthGetUser() {
   const provider = oauthProvider.value
   oauthLoading.value = true
   sessionStorage.removeItem('oauthProvider')
+  sessionStorage.removeItem('oauthState')
   window.history.replaceState({}, '', window.location.origin + window.location.pathname)
 
   loginFns[provider](code, window.location.origin + '/login').then(data => {
@@ -331,7 +343,7 @@ async function oauthGetUser() {
       showBindForm.value = true
       oauthLoading.value = false
       ElMessage({
-        message: '请注册绑定一个邮箱',
+        message: t('oauthBindHint'),
         type: 'warning',
         duration: 4000,
         plain: true,

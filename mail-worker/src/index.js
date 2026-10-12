@@ -25,6 +25,7 @@ export default {
 	},
 	email: email,
 	async scheduled(c, env, ctx) {
+		//当前 cron 只配了 0 * * * *（每小时），*/30 分支保留用于未来加高频 trigger
 		if (c.cron === '*/30 * * * *') {
 			await analysisService.refreshEchartsCache({ env })
 			return;

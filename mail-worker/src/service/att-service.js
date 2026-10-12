@@ -214,31 +214,28 @@ const attService = {
 
 	async removeAttByField(c, fieldName, fieldValues) {
 
-		const sqlList = [];
+		if (!fieldValues || fieldValues.length === 0) {
+			return;
+		}
 
-		fieldValues.forEach(value => {
+		//一次 IN 查询代替逐 id 全表聚合（原来 N 个值 = N 次全表 GROUP BY，O(n²)）
+		const placeholders = fieldValues.map(() => '?').join(',');
+		const selectSql = c.env.db.prepare(
+			`SELECT a.key, a.att_id
+				FROM attachments a
+					   JOIN (SELECT key
+							 FROM attachments
+							 GROUP BY key
+							 HAVING COUNT (*) = 1) t
+							ON a.key = t.key
+				WHERE a.${fieldName} IN (${placeholders});`
+		).bind(...fieldValues);
 
-			sqlList.push(
+		const deleteSql = c.env.db.prepare(`DELETE FROM attachments WHERE ${fieldName} IN (${placeholders})`).bind(...fieldValues);
 
-				c.env.db.prepare(
-					`SELECT a.key, a.att_id
-						FROM attachments a
-							   JOIN (SELECT key
-									 FROM attachments
-									 GROUP BY key
-									 HAVING COUNT (*) = 1) t
-									ON a.key = t.key
-						WHERE a.${fieldName} = ?;`
-					).bind(value)
-			)
+		const attListResult = await c.env.db.batch([selectSql, deleteSql]);
 
-			sqlList.push(c.env.db.prepare(`DELETE FROM attachments WHERE ${fieldName} = ?`).bind(value))
-
-		});
-
-		const attListResult = await c.env.db.batch(sqlList);
-
-		const delKeyList = attListResult.flatMap(r => r.results ? r.results.map(row => row.key) : []);
+		const delKeyList = attListResult[0].results ? attListResult[0].results.map(row => row.key) : [];
 
 		if (delKeyList.length > 0) {
 			try {

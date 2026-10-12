@@ -67,11 +67,20 @@ jobs:
         run: |
           
           echo "🔐 Starting environment setup..."
-          
-          if [ -z "$JWT_SECRET" ] || grep -q '[?%#/\\]' <<< "$JWT_SECRET"; then
-            echo "❌ JWT_SECRET variable is empty or contains invalid characters (?, %, #, /, \\)."
+
+          if [ -z "$JWT_SECRET" ] || grep -q '[?%#/\\$`"'"'"']' <<< "$JWT_SECRET"; then
+            echo "❌ JWT_SECRET variable is empty or contains invalid characters (?, %, #, /, \\, $, backtick, quote)."
             exit 1
           fi
+
+          #所有会进 sed 替换的 secret 统一拦截 shell 危险字符（$ ` " ' | &），防命令注入
+          for var_name in GITEA_ADMIN_TOKEN SUB2API_ACCOUNT; do
+            var_value="${!var_name}"
+            if [ -n "$var_value" ] && printf '%s' "$var_value" | grep -q '[$`"'"'"'|&]'; then
+              echo "❌ $var_name contains shell-dangerous characters (\$, backtick, quote, |, &)."
+              exit 1
+            fi
+          done
           
           if ! jq -e 'type == "array"' <<< "$DOMAIN" ; then
             echo "❌ DOMAIN variable must be a JSON array (e.g., [\"example.com\"])."
@@ -252,7 +261,7 @@ jobs:
             exit 1
           fi
           
-          HTTP_CODE=$(curl -sL -w "%{http_code}" -o response.txt "$WORKER_URL/api/init/${JWT_SECRET}")
+          HTTP_CODE=$(curl -sL -w "%{http_code}" -o response.txt -X POST -H "x-init-secret: ${JWT_SECRET}" "$WORKER_URL/api/init/init")
           RESPONSE_BODY=$(cat response.txt)
 
           if [ "$RESPONSE_BODY" = "success" ]; then

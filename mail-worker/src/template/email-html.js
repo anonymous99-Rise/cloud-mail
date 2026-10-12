@@ -4,7 +4,19 @@ import domainUtils from '../utils/domain-uitls';
 export default function emailHtmlTemplate(html, domain) {
 
 	const { document } = parseHTML(html);
-	document.querySelectorAll('script').forEach(script => script.remove());
+
+	//深度消毒：删 script/iframe/object/embed/link/meta + 全部 on* 事件属性 + javascript: 链接
+	document.querySelectorAll('script, iframe, object, embed, link, meta, base').forEach(el => el.remove());
+	document.querySelectorAll('*').forEach(el => {
+		[...el.attributes].forEach(attr => {
+			const name = attr.name.toLowerCase();
+			const value = attr.value || '';
+			if (name.startsWith('on') || ((name === 'href' || name === 'src' || name === 'xlink:href') && value.trim().toLowerCase().startsWith('javascript:'))) {
+				el.removeAttribute(attr.name);
+			}
+		});
+	});
+
 	html = document.toString();
 	html = html.replace(/{{domain}}/g, domainUtils.toOssDomain(domain) + '/');
 	const safeHtmlJson = JSON.stringify(html).replace(/</g, '\\u003C');
