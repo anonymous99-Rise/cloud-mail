@@ -108,7 +108,8 @@ const dbInit = {
 				c.env.db.prepare(`ALTER TABLE setting ADD COLUMN smtp_port INTEGER NOT NULL DEFAULT 465;`),
 				c.env.db.prepare(`ALTER TABLE setting ADD COLUMN smtp_user TEXT NOT NULL DEFAULT '';`),
 				c.env.db.prepare(`ALTER TABLE setting ADD COLUMN smtp_pass TEXT NOT NULL DEFAULT '';`),
-				c.env.db.prepare(`ALTER TABLE setting ADD COLUMN smtp_from TEXT NOT NULL DEFAULT '';`)
+				c.env.db.prepare(`ALTER TABLE setting ADD COLUMN smtp_from TEXT NOT NULL DEFAULT '';`),
+				c.env.db.prepare(`ALTER TABLE setting ADD COLUMN smtp_domains TEXT NOT NULL DEFAULT '';`)
 			]);
 		} catch (e) {
 			console.warn(`跳过字段：${e.message}`);

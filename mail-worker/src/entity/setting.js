@@ -83,6 +83,7 @@ export const setting = sqliteTable('setting', {
 	smtpPort: integer('smtp_port').default(465).notNull(),
 	smtpUser: text('smtp_user').default('').notNull(),
 	smtpPass: text('smtp_pass').default('').notNull(),
-	smtpFrom: text('smtp_from').default('').notNull()
+	smtpFrom: text('smtp_from').default('').notNull(),
+	smtpDomains: text('smtp_domains').default('').notNull()
 });
 export default setting

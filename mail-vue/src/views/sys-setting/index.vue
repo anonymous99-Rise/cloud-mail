@@ -587,6 +587,8 @@
           <el-input type="text" style="margin-top: 15px" placeholder="noreply@example.com" v-model="smtpForm.user"/>
           <el-input type="password" style="margin-top: 15px" :placeholder="$t('smtpPass')" v-model="smtpForm.pass"/>
           <el-input type="text" style="margin-top: 15px" placeholder="noreply@example.com" v-model="smtpForm.from"/>
+          <el-input type="text" style="margin-top: 15px" :placeholder="$t('smtpDomainsPh')" v-model="smtpForm.domains"/>
+          <div class="smtp-domains-tip" style="margin-top: 8px; font-size: 12px; color: var(--el-text-color-secondary); line-height: 1.5">{{ $t('smtpDomainsTip') }}</div>
         </div>
         <template #footer>
           <div class="dialog-footer">
@@ -1105,7 +1107,8 @@ const smtpForm = reactive({
   port: 465,
   user: '',
   pass: '',
-  from: ''
+  from: '',
+  domains: ''
 })
 
 const s3 = reactive({
@@ -1693,6 +1696,7 @@ function openSmtpSetting() {
   smtpForm.user = setting.value.smtpUser || ''
   smtpForm.pass = ''
   smtpForm.from = setting.value.smtpFrom || ''
+  smtpForm.domains = setting.value.smtpDomains || ''
   smtpShow.value = true
 }
 
@@ -1701,9 +1705,10 @@ function saveSmtp() {
     smtpHost: smtpForm.host.trim(),
     smtpPort: smtpForm.port,
     smtpUser: smtpForm.user.trim(),
-    smtpFrom: smtpForm.from.trim()
+    smtpFrom: smtpForm.from.trim(),
+    smtpDomains: smtpForm.domains.trim()
   }
-  //密码留空表示不修改（get() 返回的是脱敏值）；全部留空表示清除 SMTP 配置
+  //密码留空表示不修改（get() 返回的是脱敏值）
   if (smtpForm.pass.trim()) {
     form.smtpPass = smtpForm.pass.trim()
   }

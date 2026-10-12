@@ -340,11 +340,14 @@ const emailService = {
 		const domain = emailUtils.getDomain(accountRow.email);
 		const resendToken = resendTokens[domain];
 		const useCloudflareEmail = !!c.env.email;
-		const { smtpHost, smtpUser, smtpPass, smtpFrom } = await settingService.query(c);
-		const useSmtp = !!(smtpHost && smtpUser && smtpPass && smtpFrom);
+		const { smtpHost, smtpUser, smtpPass, smtpFrom, smtpDomains } = await settingService.query(c);
+		//SMTP 完整配置 + 发件账号域名在 smtpDomains 列表（默认走 Resend/CF，选配域名才走 SMTP）
+		const smtpConfigured = !!(smtpHost && smtpUser && smtpPass && smtpFrom);
+		const smtpDomainList = (smtpDomains || '').split(',').map(d => d.trim().toLowerCase()).filter(Boolean);
+		const useSmtp = smtpConfigured && smtpDomainList.includes(domain.toLowerCase());
 
 		//如果接收方存在站外邮箱，又没有发信服务
-		if (!useCloudflareEmail && !resendToken && !useSmtp && !allInternal) {
+		if (!useCloudflareEmail && !resendToken && !smtpConfigured && !allInternal) {
 			throw new BizError(t('noSendProvider'));
 		}
 
@@ -371,7 +374,7 @@ const emailService = {
 		let sendResult = {};
 		let smtpSent = false;
 
-		//发信通道优先级：SMTP（如腾讯企业邮）> Cloudflare Email > Resend
+		//发信通道选择：发件域名命中 smtpDomains 时走 SMTP（如企业邮），否则 CF Email > Resend
 		if (!allInternal) {
 
 			const sendParams = {
@@ -557,6 +560,7 @@ const emailService = {
 		const reader = socket.readable.getReader();
 		const writer = socket.writable.getWriter();
 		const encoder = new TextEncoder();
+		const decoder = new TextDecoder();
 
 		//读完整 SMTP 响应（多行 "ddd-text" 以 "ddd text" 结尾）
 		let buf = '';
@@ -591,8 +595,6 @@ const emailService = {
 			}
 			return resp;
 		}
-
-		const decoder = new TextDecoder();
 
 		try {
 			const banner = await readSmtp();
@@ -649,6 +651,10 @@ const emailService = {
 		const headers = [];
 
 		headers.push(`From: ${params.name} <${smtpFrom}>`);
+		//代发场景：Reply-To 指向真实发件账号，收件人回复仍回到用户邮箱
+		if (params.accountEmail && params.accountEmail !== smtpFrom) {
+			headers.push(`Reply-To: ${params.name} <${params.accountEmail}>`);
+		}
 		headers.push(`To: ${[...params.receiveEmail].map(t => `<${t}>`).join(', ')}`);
 		headers.push(`Subject: ${this.mimeEncode(params.subject || '')}`);
 		headers.push('MIME-Version: 1.0');
