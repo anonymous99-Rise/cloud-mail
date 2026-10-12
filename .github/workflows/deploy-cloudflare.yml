@@ -76,11 +76,10 @@ jobs:
             fs.writeFileSync('mail-worker/package.json', JSON.stringify(p, null, '\t') + '\n');
           "
 
-          #生成简短更新说明（上次 tag 以来的 commit 标题）
+          #生成简短更新说明（上次 tag 以来的 commit 标题），用 node 处理避免 shell 引号问题
           PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           RANGE="${PREV_TAG:+${PREV_TAG}..}HEAD"
-          NOTES=$(git log ${RANGE} --pretty=format:'- %s' | grep -v '^release:' | head -30)
-          NOTES="${NOTES//'\''/\"}"
+          git log ${RANGE} --pretty=format:'- %s' | grep -v '^release:' | head -30 > /tmp/notes.txt || true
 
           git add mail-worker/package.json
           git commit -m "release: v${NEW_VERSION} [skip ci]"
@@ -88,10 +87,9 @@ jobs:
           git push origin main
           git push origin "$TAG"
 
-          #写入 release notes 供 tag workflow 复用
           {
             echo 'notes<<EOF'
-            echo "$NOTES"
+            cat /tmp/notes.txt
             echo 'EOF'
           } >> "$GITHUB_OUTPUT"
 
