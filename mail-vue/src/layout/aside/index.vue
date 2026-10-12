@@ -59,15 +59,15 @@
           <Icon icon="fluent:fingerprint-20-filled" width="22" height="22" />
           <span class="menu-name" style="margin-left: 15px">{{$t('inviteCode')}}</span>
         </el-menu-item>
+        <el-menu-item @click="router.push({name: 'email-unify'})" index="email-unify" v-perm="'gitea:match'"
+                      :class="route.meta.name === 'email-unify' ? 'choose-item' : ''">
+          <Icon icon="fluent:mail-multiple-24-regular" width="20" height="20" />
+          <span class="menu-name" style="margin-left: 14px">{{$t('emailUnify')}}</span>
+        </el-menu-item>
         <el-menu-item @click="router.push({name: 'sys-setting'})" index="sys-setting" v-perm="'setting:query'"
                       :class="route.meta.name === 'sys-setting' ? 'choose-item' : ''">
           <Icon icon="eos-icons:system-ok-outlined" width="18" height="18" style="margin-left: 2px" />
           <span class="menu-name" style="margin-left: 17px">{{$t('SystemSettings')}}</span>
-        </el-menu-item>
-        <el-menu-item @click="router.push({name: 'email-unify'})" index="email-unify" v-perm="'gitea:match'"
-                      :class="route.meta.name === 'email-unify' ? 'choose-item' : ''">
-          <Icon icon="fluent:mail-arrow-double-down-24-regular" width="20" height="20" />
-          <span class="menu-name" style="margin-left: 14px">{{$t('emailUnify')}}</span>
         </el-menu-item>
       </el-menu>
     </div>
