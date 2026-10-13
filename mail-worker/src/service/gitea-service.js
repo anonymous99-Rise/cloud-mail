@@ -92,8 +92,10 @@ const giteaService = {
 
 	async createUser(c, params) {
 
-		const { username, email, fullName } = params;
+		const { username, email, fullName, password } = params;
 		const config = await this.assertConfig(c);
+		//密码可由调用方传入（JIT 需要把明文密码放进开通通知邮件），未传则随机生成
+		const plainPassword = password || cryptoUtils.genRandomPwd(12);
 
 		const res = await fetch(`${config.domain}/api/v1/admin/users`, {
 			method: 'POST',
@@ -106,7 +108,7 @@ const giteaService = {
 				email,
 				full_name: fullName,
 				login_name: username,
-				password: cryptoUtils.genRandomPwd(12),
+				password: plainPassword,
 				must_change_password: false
 			})
 		});

@@ -194,8 +194,10 @@ const unifyService = {
 		if (!giteaUser) {
 			const username = this.uniqueUsername(giteaUsers, preferredUsername || name);
 			const giteaEmail = username + '@' + defaultDomain;
-			await giteaService.createUser(c, { username, email: giteaEmail, fullName: name });
-			giteaUser = { username, fullName: name, email: giteaEmail };
+			//明文密码保留：放进开通通知邮件，用户无需走重置流程
+			const giteaPassword = cryptoUtils.genRandomPwd(12);
+			await giteaService.createUser(c, { username, email: giteaEmail, fullName: name, password: giteaPassword });
+			giteaUser = { username, fullName: name, email: giteaEmail, password: giteaPassword };
 			this.auditLog(c, 'jit.gitea.create', name, giteaEmail);
 		}
 
@@ -229,6 +231,7 @@ const unifyService = {
 
 			//4. 开通通知：发到统一邮箱本身（用户登录 Hope Mail 后即可在收件箱看到）
 			//发件域名跟随统一邮箱域名：dfyx.click 走 Resend(noreply@dfyx.click)，hopeless99.top 走企业邮
+			//仅当 Gitea 账号是本次新建时才附上明文密码（复用已有账号时拿不到也不该泄露）
 			const senderDomain = mailboxEmail.split('@')[1];
 			const { title, giteaDomain } = setting;
 			await emailService.sendSystemMail(c, {
@@ -237,6 +240,7 @@ const unifyService = {
 				subject: `【${title || 'Hope Mail'}】您的账号已开通`,
 				html: accountNoticeTemplate({
 					giteaUsername: giteaUser.username,
+					giteaPassword: giteaUser.password || '',
 					mailbox: mailboxEmail,
 					giteaUrl: giteaDomain || '',
 					title: title || 'Hope Mail'
