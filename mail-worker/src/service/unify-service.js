@@ -206,9 +206,11 @@ const unifyService = {
 			c, unified ? giteaEmail : giteaUser.username + '@' + defaultDomain, oauthRow
 		);
 
+		//无条件确保 account 存在（JIT 新建 Gitea 时 giteaEmail 已统一，但 account 尚未创建）
+		await this.ensureAccount(c, mailboxEmail);
+
 		//空闲邮箱被重命名过（原前缀被占）时同步回写 Gitea
 		if (mailboxEmail !== giteaEmail) {
-			await this.ensureAccount(c, mailboxEmail);
 			try {
 				await giteaService.modifyUserEmail(c, giteaUser.username, mailboxEmail);
 			} catch (e) {
@@ -285,6 +287,64 @@ const unifyService = {
 	//oauth 身份绑定到用户
 	async bindOauth(c, oauthUserId, userId) {
 		await orm(c).update(oauth).set({ userId }).where(eq(oauth.oauthUserId, oauthUserId)).run();
+	},
+
+	//给已绑定的用户补一个统一邮箱（修复早期走绑定表单、主邮箱非统一邮箱的老用户）
+	//幂等：主邮箱已是统一邮箱则跳过；目标邮箱被他人占用则自动加后缀
+	async ensureUnifiedMailboxForUser(c, oauthRow, userRow, realName) {
+
+		if (!userRow || userRow.isDel === 1) {
+			return null;
+		}
+
+		try {
+			const setting = await settingService.query(c);
+			const domainList = this.getDomains(setting);
+			const unified = domainList.some(d => (userRow.email || '').toLowerCase().endsWith('@' + d));
+			if (unified) {
+				return null;
+			}
+
+			const name = (realName || emailUtils.getName(userRow.email) || '').trim();
+
+			//1. 定位或创建 Gitea 身份
+			const giteaUsers = await giteaService.listUsers(c);
+			const norm = s => (s || '').trim().toLowerCase();
+			let giteaUser = giteaUsers.find(u => norm(u.fullName) === norm(name))
+				|| giteaUsers.find(u => norm(u.username) === norm(name));
+			if (!giteaUser) {
+				const username = this.uniqueUsername(giteaUsers, name);
+				const giteaEmail = username + '@' + domainList[0];
+				await giteaService.createUser(c, { username, email: giteaEmail, fullName: name });
+				giteaUser = { username, fullName: name, email: giteaEmail };
+				this.auditLog(c, 'jit.gitea.create', name, giteaEmail);
+			}
+
+			//2. 解析空闲邮箱并绑定到已有用户（不新建 user）
+			const mailboxEmail = await this.resolveFreeMailbox(c, giteaUser.username + '@' + domainList[0], oauthRow);
+			const accountRow = await accountService.selectByEmailIncludeDel(c, mailboxEmail);
+			if (!accountRow) {
+				await accountService.insert(c, { userId: userRow.userId, email: mailboxEmail, name: emailUtils.getName(mailboxEmail) });
+			} else if (accountRow.userId === 0) {
+				await accountService.bindUser(c, mailboxEmail, userRow.userId);
+			}
+			//（邮箱已归属本用户 → 幂等跳过）
+
+			//3. 回写 Gitea
+			if (mailboxEmail !== (giteaUser.email || '').toLowerCase()) {
+				try {
+					await giteaService.modifyUserEmail(c, giteaUser.username, mailboxEmail);
+				} catch (e) {
+					this.auditLog(c, 'jit.mailbox.fail', giteaUser.username, mailboxEmail, e.message);
+				}
+			}
+
+			this.auditLog(c, 'jit.mailbox.added', name, mailboxEmail);
+			return mailboxEmail;
+		} catch (e) {
+			this.auditLog(c, 'jit.fail', realName || '', '', e.message);
+			return null;
+		}
 	}
 
 };

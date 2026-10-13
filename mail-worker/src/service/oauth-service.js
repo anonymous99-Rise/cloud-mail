@@ -280,7 +280,10 @@ const oauthService = {
 		const oauthRow = await this.saveUser(c, userInfo);
 		let userRow = await userService.selectByIdIncludeDel(c, oauthRow.userId);
 
-		if (!userRow) {
+		if (userRow) {
+			//已绑定：主邮箱不是统一邮箱（早期绑定表单注册的老用户）→ 补一个统一邮箱（幂等）
+			await unifyService.ensureUnifiedMailboxForUser(c, oauthRow, userRow, userInfo.username || userInfo.name);
+		} else {
 			//Gitea 平台：按「统一邮箱前缀 == gitea 用户名」认领管理员预分配的无主邮箱
 			if (userInfo.platform === 'gitea' && userInfo.username) {
 				userRow = await unifyService.claimAssignedAccount(c, oauthRow, userInfo.username);
